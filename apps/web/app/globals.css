@@ -1,0 +1,1826 @@
+/* Theme system: all colors are CSS custom properties, defined once here
+   for both a dark and a light palette, selected by `data-theme` on
+   `<html>` (set before paint by the inline script in app/layout.tsx -
+   see that file for the "avoid FOUC" rationale). `:root` holds the dark
+   palette as a fallback for the rare no-JS case; `html[data-theme=...]`
+   is what actually drives the app once JS has run. */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Binance/exchange-inspired dark palette: deep near-black surfaces
+     (not just "dark gray") with a single warm amber accent used
+     consistently for every interactive element - deliberately not
+     Binance's exact brand yellow (#F0B90B/#FCD535), a muted/more
+     orange amber instead. */
+  --bg: #05070a;
+  --panel: #0c0f14;
+  --panel-border: #1b222c;
+  --surface-sunken: #080a0e;
+  --surface-alt: #141a22;
+  --surface-raised: #11161d;
+  --text: #e8edf4;
+  --text-muted: #7c8a9c;
+  --accent: #f2a93b;
+  --accent-contrast: #0c0f14;
+  --up: #2fbf71;
+  --down: #f0494c;
+  --flat: #7c8a9c;
+  --warn: #f0b429;
+  --purple: #c084fc;
+
+  --notice-bg: #1b2838;
+  --notice-border: #27405a;
+  --notice-error-bg: #2a1618;
+  --notice-error-border: #5a2a2a;
+  --notice-error-text: #ffb4ad;
+  --unavailable-stripe: #2a3545;
+
+  /* Score-band gradient, Very Weak -> Very Strong (SCORING.md section 1,
+     SPEC.md section 19) - color only, the band label text never changes. */
+  --band-very-weak: #f85149;
+  --band-weak: #f0883e;
+  --band-neutral: #8b98a9;
+  --band-moderate: #4da3ff;
+  --band-strong: #3fb950;
+  --band-very-strong: #56d364;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --panel-border: #d7dee8;
+  --surface-sunken: #eef1f6;
+  --surface-alt: #e8ecf2;
+  --surface-raised: #eef2f8;
+  --text: #1a2130;
+  --text-muted: #5b6472;
+  --accent: #b6790a;
+  --accent-contrast: #ffffff;
+  --up: #166534;
+  --down: #b42318;
+  --flat: #5b6472;
+  --warn: #9a6700;
+  --purple: #8250df;
+
+  --notice-bg: #eaf1fb;
+  --notice-border: #bcd4f3;
+  --notice-error-bg: #fdecea;
+  --notice-error-border: #f3c2bd;
+  --notice-error-text: #9c2b23;
+  --unavailable-stripe: #d7dee8;
+
+  --band-very-weak: #cf222e;
+  --band-weak: #c2410c;
+  --band-neutral: #5b6472;
+  --band-moderate: #1f6feb;
+  --band-strong: #166534;
+  --band-very-strong: #0f7b3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel);
+  gap: 1rem;
+}
+
+.topnav .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+.topnav .tagline {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.topnav .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-alt);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+}
+
+main {
+  padding: 1.25rem 1.5rem;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Tabular-numeral alignment utility (SPEC.md UI redesign task: every
+   numeric column - price, score, RS rank, % change - must line up
+   vertically like a real market-data table). Applied directly on the
+   numeric span/cell, not globally on <table>, since labels/badges in
+   the same row should keep normal proportional spacing. */
+.num {
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+th.sortable:hover {
+  color: var(--text);
+}
+
+th.sortable .sort-indicator {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
+th.sortable .sort-indicator.inactive {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--surface-alt);
+}
+
+tr.row-link {
+  cursor: pointer;
+}
+
+tr.row-link:hover {
+  background: var(--surface-raised);
+}
+
+/* --- Dense, data-table-first market view (Binance-markets-inspired home
+   page redesign) --- */
+
+.market-table-panel {
+  padding: 0.75rem 0.9rem 0.5rem;
+}
+
+.market-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.filter-tabs {
+  display: inline-flex;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 0.15rem;
+  background: var(--surface-sunken);
+  gap: 0.15rem;
+}
+
+.filter-tabs button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-tabs button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.filter-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.market-table-scroll {
+  overflow-x: auto;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.market-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+
+.market-table td,
+.market-table th {
+  white-space: nowrap;
+}
+
+.market-table tbody tr {
+  transition: background-color 0.08s ease;
+}
+
+/* --- Stage 2 Momentum Scanner pass/fail badge (reuses --up/--down,
+   never a parallel color system) --- */
+
+.stage2-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stage2-badge.stage2-pass {
+  color: var(--up);
+  background: rgba(47, 191, 113, 0.14);
+}
+
+.stage2-badge.stage2-fail {
+  color: var(--down);
+  background: rgba(240, 73, 76, 0.12);
+}
+
+.stage2-badge.stage2-na {
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  font-weight: 500;
+}
+
+.stage2-distance {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* --- Analyst Target column (reuses --up/--down, never a parallel color
+   system - green = target above current price = upside, red = below) --- */
+
+.analyst-cell {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-size: 0.8rem;
+}
+
+.analyst-cell .analyst-target-price {
+  font-weight: 600;
+}
+
+.analyst-cell .analyst-upside.up {
+  color: var(--up);
+}
+
+.analyst-cell .analyst-upside.down {
+  color: var(--down);
+}
+
+.analyst-cell.no-coverage {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Ticker-header variant (apps/web/components/TickerHeader.tsx) - same
+   pill shape/colors as .stage2-badge, just a different label. */
+.analyst-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.analyst-badge.analyst-up {
+  color: var(--up);
+  background: rgba(47, 191, 113, 0.14);
+}
+
+.analyst-badge.analyst-down {
+  color: var(--down);
+  background: rgba(240, 73, 76, 0.12);
+}
+
+.analyst-badge.analyst-na {
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  font-weight: 500;
+}
+
+/* --- Day change % (home table + top gainers/losers widget) --- */
+
+.day-change.up {
+  color: var(--up);
+  font-weight: 600;
+}
+
+.day-change.down {
+  color: var(--down);
+  font-weight: 600;
+}
+
+.day-change.flat {
+  color: var(--text-muted);
+}
+
+/* --- Ticker-style stock-page header strip --- */
+
+.ticker-panel {
+  padding: 0.65rem 1.1rem;
+}
+
+.ticker-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+
+.ticker-symbol {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.ticker-price {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.ticker-change-badge {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+.score-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.score-cell .score-band-pill {
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--surface-alt);
+}
+
+.score-cell.unscored {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.tone-up {
+  color: var(--up);
+}
+
+.tone-down {
+  color: var(--down);
+}
+
+.tone-flat {
+  color: var(--flat);
+}
+
+.stock-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.stock-header .symbol {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.stock-header .price {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.stock-header .change {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.meta-row {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.range-selector {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.range-selector button {
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.range-selector button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.overlay-toggles {
+  display: flex;
+  gap: 0.9rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.overlay-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--surface-alt);
+  padding: 0.3rem 0;
+}
+
+.metric .label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.metric .value {
+  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.flag {
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.flag.yes {
+  background: rgba(63, 185, 80, 0.18);
+  color: var(--up);
+}
+
+.flag.no {
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+.notice {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.notice.error {
+  background: var(--notice-error-bg);
+  border-color: var(--notice-error-border);
+  color: var(--notice-error-text);
+}
+
+.skeleton {
+  color: var(--text-muted);
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.footnote {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* --- Research Score / confidence / regime badges (Phase 3) --- */
+
+.score-header-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--panel-border);
+}
+
+.score-badge .score-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.score-badge .score-band {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.confidence-badge .confidence-value {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.regime-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--panel-border);
+}
+
+.regime-badge.regime-bullish {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--up);
+  border-color: rgba(63, 185, 80, 0.4);
+}
+
+.regime-badge.regime-bearish {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--down);
+  border-color: rgba(248, 81, 73, 0.4);
+}
+
+.regime-badge.regime-neutral {
+  background: var(--surface-alt);
+  color: var(--text-muted);
+}
+
+/* --- Component breakdown bars --- */
+
+.component-row {
+  margin-bottom: 0.45rem;
+}
+
+.component-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+  cursor: pointer;
+}
+
+.component-row-head .component-name {
+  font-weight: 600;
+}
+
+.component-row-head .component-score {
+  color: var(--text-muted);
+}
+
+.component-bar-track {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.component-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--accent);
+}
+
+.component-bar-fill.unavailable {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unavailable-stripe),
+    var(--unavailable-stripe) 6px,
+    var(--surface-alt) 6px,
+    var(--surface-alt) 12px
+  );
+}
+
+.component-unavailable-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+/* --- Fundamental Score block (FundamentalsPanel) - a sub-view nested
+   inside the Fundamentals panel. Deliberately mirrors
+   `.component-bar-track`/`.component-bar-fill` above (same track
+   height, same rounded-pill fill, same "unavailable" hatch pattern) so
+   it reads as "the same kind of bar", but uses the `--purple` accent
+   instead of `--accent` and a smaller `.subscore-*` footprint so it's
+   visually legible as a sub-view of the main 8-component Research
+   Score breakdown, never confused with it. */
+
+.fundamental-score-block {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.subscore-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 1.2rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 640px) {
+  .subscore-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.subscore-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  margin-bottom: 0.2rem;
+}
+
+.subscore-name {
+  color: var(--text-muted);
+}
+
+.subscore-value {
+  font-weight: 700;
+}
+
+.subscore-bar-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.subscore-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--purple);
+}
+
+.subscore-bar-fill.unavailable {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unavailable-stripe),
+    var(--unavailable-stripe) 5px,
+    var(--surface-alt) 5px,
+    var(--surface-alt) 10px
+  );
+}
+
+.quarterly-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 640px) {
+  .quarterly-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quarterly-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+
+.quarterly-kpi-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.quarterly-kpi-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ath-badge {
+  align-self: flex-start;
+  font-size: 0.9rem;
+}
+
+.ath-badge-yes {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--up);
+  background: color-mix(in srgb, var(--up) 18%, transparent);
+}
+
+.ath-badge-no {
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.ath-badge-unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.quarterly-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .quarterly-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quarterly-stat-card {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.quarterly-stat-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.3rem;
+}
+
+.quarterly-stat-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.quarterly-stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.quarterly-stat-delta {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.quarterly-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 44px;
+}
+
+.quarterly-bar {
+  flex: 1;
+  min-width: 0;
+  max-width: 28px;
+  border-radius: 4px 4px 0 0;
+}
+
+.quarterly-bar.unavailable {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unavailable-stripe),
+    var(--unavailable-stripe) 4px,
+    var(--surface-alt) 4px,
+    var(--surface-alt) 8px
+  );
+}
+
+.quarterly-trend-ticks {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.quarterly-trend-ticks span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quarterly-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 0.7rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.quarterly-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  font-style: normal;
+}
+
+.legend-dot.tone-dot-up {
+  background: var(--up);
+}
+
+.legend-dot.tone-dot-down {
+  background: var(--down);
+}
+
+.legend-dot.tone-dot-flat {
+  background: var(--flat);
+}
+
+.legend-dot.legend-dot-unavailable {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unavailable-stripe),
+    var(--unavailable-stripe) 2px,
+    var(--surface-alt) 2px,
+    var(--surface-alt) 4px
+  );
+}
+
+.component-evidence-list {
+  margin: 0.4rem 0 0.8rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.component-evidence-list .evidence-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--surface-alt);
+}
+
+.component-evidence-list .evidence-row:last-child {
+  border-bottom: none;
+}
+
+/* --- Bull / Bear case --- */
+
+.bull-bear-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .bull-bear-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bull-bear-grid h3 {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem 0;
+}
+
+.bull-bear-grid h3.bull-title {
+  color: var(--up);
+}
+
+.bull-bear-grid h3.bear-title {
+  color: var(--down);
+}
+
+.bull-bear-grid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.bull-bear-grid li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--surface-alt);
+}
+
+.bull-bear-grid li:last-child {
+  border-bottom: none;
+}
+
+/* --- Bull/bear strength badges (reuses --up/--down + the Stage 2
+   pass/fail pill convention above - never a new color system). Strong
+   entries get a bolder/opaque pill + bold body text; mild entries get a
+   muted, lower-contrast treatment so the eye lands on the strongest
+   evidence first in each column. */
+
+.strength-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.strength-row.strength-row-strong {
+  font-weight: 600;
+}
+
+.strength-row.strength-row-mild {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.strength-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.strength-badge.tone-up.strength-strong {
+  color: var(--up);
+  background: rgba(47, 191, 113, 0.18);
+}
+
+.strength-badge.tone-up.strength-moderate {
+  color: var(--up);
+  background: rgba(47, 191, 113, 0.1);
+}
+
+.strength-badge.tone-up.strength-mild {
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  font-weight: 500;
+}
+
+.strength-badge.tone-down.strength-strong {
+  color: var(--down);
+  background: rgba(240, 73, 76, 0.18);
+}
+
+.strength-badge.tone-down.strength-moderate {
+  color: var(--down);
+  background: rgba(240, 73, 76, 0.1);
+}
+
+.strength-badge.tone-down.strength-mild {
+  color: var(--text-muted);
+  background: var(--surface-alt);
+  font-weight: 500;
+}
+
+/* --- Synced multi-pane stock chart (candlestick+volume / RSI / MACD) ---
+   One bordered frame wraps all three lightweight-charts instances so
+   they read as a single cohesive chart; panes are separated by a hairline
+   only (no gap/double border), and only the bottom-most pane shows the
+   time-axis labels (its chart options set timeScale.visible on just that
+   one - see components/StockCharts.tsx). */
+
+.chart-frame {
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.chart-pane {
+  border-top: 1px solid var(--panel-border);
+}
+
+.chart-pane:first-child {
+  border-top: none;
+}
+
+.chart-pane .chart-pane-label {
+  padding: 0.5rem 0.75rem 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.chart-pane .chart-pane-label .legend-macd {
+  color: var(--accent);
+}
+
+.chart-pane .chart-pane-label .legend-signal {
+  color: var(--warn);
+}
+
+.chart-pane-container {
+  width: 100%;
+}
+
+/* --- Top nav links (Strategies, Phase 5/6) --- */
+
+.nav-link {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.2rem;
+}
+
+.nav-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* --- Strategy builder (Phase 5) --- */
+
+.strategy-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--surface-alt);
+}
+
+.strategy-list-item:last-child {
+  border-bottom: none;
+}
+
+.builder-group {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.9rem;
+  margin-bottom: 0.9rem;
+  background: var(--surface-sunken);
+}
+
+.builder-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.builder-condition-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr auto auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .builder-condition-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.builder-condition-row select,
+.builder-condition-row input {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.builder-remove-btn {
+  background: none;
+  border: 1px solid var(--notice-error-border);
+  color: var(--notice-error-text);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.builder-add-btn,
+.form-submit-btn {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.builder-add-btn {
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.8rem;
+}
+
+.form-field label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.form-field input,
+.form-field select {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+@media (max-width: 760px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Backtest results (Phase 6) --- */
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.metric-tile {
+  background: var(--surface-sunken);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+}
+
+.metric-tile .metric-tile-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metric-tile .metric-tile-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 0.2rem;
+}
+
+.integrity-block {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  background: var(--surface-raised);
+  margin-bottom: 1.25rem;
+}
+
+.integrity-block h2 {
+  color: var(--accent);
+}
+
+.integrity-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.integrity-check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--panel-border);
+}
+
+.integrity-check-pill.status-pass {
+  color: var(--up);
+  border-color: rgba(63, 185, 80, 0.4);
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.integrity-check-pill.status-fail {
+  color: var(--down);
+  border-color: rgba(248, 81, 73, 0.4);
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.integrity-check-pill.status-na {
+  color: var(--text-muted);
+  background: var(--surface-alt);
+}
+
+.assumptions-note {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--panel-border);
+}
+
+.overfitting-banner {
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--notice-border);
+  background: var(--notice-bg);
+}
+
+.overfitting-banner.risk-high {
+  border-color: var(--notice-error-border);
+  background: var(--notice-error-bg);
+  color: var(--notice-error-text);
+}
+
+.overfitting-banner.risk-moderate {
+  border-color: var(--warn);
+}
+
+.overfitting-banner .overfitting-title {
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.trade-row-loss {
+  color: var(--down);
+}
+
+.trade-row-win {
+  color: var(--up);
+}
+
+.universe-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+}
+
+.universe-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.universe-chip.selected {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ============================================================
+   Market Pulse dashboard (home page, above the instrument table)
+   ============================================================ */
+
+.pulse-section {
+  margin-bottom: 1rem;
+}
+
+.pulse-heading {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.pulse-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  min-width: 0;
+}
+
+.pulse-card h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.pulse-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+
+/* --- Nifty mini chart --- */
+
+.nifty-mini-card {
+  grid-column: span 2;
+  min-width: 320px;
+}
+
+.nifty-mini-price {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 0.15rem;
+}
+
+.nifty-mini-chart {
+  width: 100%;
+  height: 140px;
+}
+
+/* --- Breadth gauge: plain horizontal bars, value always printed as
+   text alongside the fill (dataviz skill: color is never the only
+   signal for a magnitude metric). --- */
+
+.breadth-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.breadth-label {
+  flex: 0 0 92px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.breadth-track {
+  flex: 1 1 auto;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.breadth-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.breadth-fill.breadth-up {
+  background: var(--up);
+}
+
+.breadth-fill.breadth-down {
+  background: var(--down);
+}
+
+.breadth-fill.breadth-flat {
+  background: var(--text-muted);
+}
+
+.breadth-value {
+  flex: 0 0 48px;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.breadth-value.up {
+  color: var(--up);
+}
+
+.breadth-value.down {
+  color: var(--down);
+}
+
+/* --- Research Score distribution bar chart --- */
+
+.score-dist-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.75rem;
+  height: 260px;
+  padding-top: 0.5rem;
+  max-width: 540px;
+  margin: 0 auto;
+}
+
+.score-dist-bar {
+  flex: 1 1 0;
+  max-width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.score-dist-bar:hover {
+  background: var(--surface-alt);
+}
+
+.score-dist-bar.active {
+  background: var(--surface-alt);
+  outline: 1px solid var(--accent);
+}
+
+.score-dist-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.score-dist-fill {
+  width: 60%;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.score-dist-card {
+  grid-column: span 2;
+  min-width: 320px;
+}
+
+.score-dist-label {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+  text-align: center;
+  line-height: 1.15;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.band-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.band-filter-chip button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+/* --- Sector performance heatmap/grid --- */
+
+.sector-heatmap-card {
+  grid-column: span 2;
+}
+
+.sector-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.4rem;
+}
+
+.sector-cell {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sector-cell:hover {
+  border-color: var(--text-muted);
+}
+
+.sector-cell.active {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.sector-cell-name {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.25rem;
+}
+
+.sector-cell-metrics {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.sector-cell-footnote {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* --- Top Movers (gainers/losers) widget --- */
+
+.movers-card {
+  grid-column: span 2;
+  min-width: 420px;
+}
+
+.movers-columns {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.movers-list {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
+.movers-list h4 {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.movers-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.movers-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.movers-row:hover {
+  background: var(--surface-alt);
+}
+
+.movers-symbol {
+  font-weight: 600;
+  font-size: 0.82rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movers-row .day-change {
+  flex-shrink: 0;
+}
+
+/* --- Day change % (reused by the home table's "Day %" column, the
+   sector heatmap, and the top movers widget) --- */
+
+.day-change.up {
+  color: var(--up);
+}
+
+.day-change.down {
+  color: var(--down);
+}
