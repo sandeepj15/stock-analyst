@@ -123,9 +123,39 @@ function-scoped — see the comment in `conftest.py` about asyncpg + event
 loops). No test hits the real network or a real market-data provider; all
 provider interactions in tests use `tests/fixtures/fake_provider.py`.
 
-CI (`.github/workflows/ci.yml`) runs the same tests against a `postgres:16`
-GitHub Actions service container, then does a (push-free) `docker compose
-build`.
+### Setting up Continuous Integration (CI)
+
+By default, the automated GitHub Actions CI workflow has been removed to save free tier minutes. If you want GitHub to automatically run your tests, type-checking, and docker builds on every push, create a file at `.github/workflows/ci.yml` in your repository with the following content:
+
+```yaml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: signalforge
+          POSTGRES_PASSWORD: signalforge
+          POSTGRES_DB: signalforge_test
+        ports: [5432:5432]
+        options: --health-cmd "pg_isready -U signalforge" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge
+      TEST_DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge_test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: mypy apps packages
+      - run: pytest -q tests/unit tests/data_quality tests/api
+```
 
 ## Known limitations / explicit deferrals
 
