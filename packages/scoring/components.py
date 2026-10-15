@@ -29,6 +29,7 @@ from packages.fundamentals.derive import (
     compute_valuation_metrics,
     current_ratio,
     debt_to_equity,
+    find_year_ago_period_end,
     fundamentals_data_age_days,
     fundamentals_freshness_score,
     growth_yoy,
@@ -42,7 +43,7 @@ from packages.fundamentals.derive import (
 from packages.fundamentals.models import FundamentalSnapshot
 from packages.indicators import IndicatorSnapshot
 from packages.market_data.history import load_ohlcv_dataframe
-from packages.market_data.relative_strength import compute_relative_strength
+from packages.market_data.relative_strength import UniverseSectorRS, compute_relative_strength
 from packages.regime.service import get_latest_regime
 from packages.scoring.aggregate import ComponentResult
 from packages.scoring.constants import COMPONENT_WEIGHTS
@@ -208,12 +209,27 @@ def score_risk_quality(
     return result, pairs
 
 
-async def _latest_fundamental_snapshots(session: AsyncSession, instrument_id: uuid.UUID, limit: int = 2) -> list[FundamentalSnapshot]:
+async def _latest_fundamental_snapshots(
+    session: AsyncSession, instrument_id: uuid.UUID, limit: int = 2
+) -> list[FundamentalSnapshot]:
+    """Latest annual (FY/TTM) snapshots, excluding quarterly snapshots."""
     stmt = (
         select(FundamentalSnapshot)
-        .where(FundamentalSnapshot.instrument_id == instrument_id)
+        .where(FundamentalSnapshot.instrument_id == instrument_id, FundamentalSnapshot.period_type != "Q")
         .order_by(FundamentalSnapshot.period_end.desc())
         .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _all_quarterly_snapshots(
+    session: AsyncSession, instrument_id: uuid.UUID
+) -> list[FundamentalSnapshot]:
+    """Every stored period_type='Q' snapshot for this instrument, most recent first."""
+    stmt = (
+        select(FundamentalSnapshot)
+        .where(FundamentalSnapshot.instrument_id == instrument_id, FundamentalSnapshot.period_type == "Q")
+        .order_by(FundamentalSnapshot.period_end.desc())
     )
     return list((await session.execute(stmt)).scalars().all())
 
@@ -238,10 +254,26 @@ async def score_fundamentals(
     latest = snapshots[0]
     previous = snapshots[1] if len(snapshots) > 1 else None
 
+    revenue_growth_yoy = growth_yoy(_f(latest.revenue), _f(previous.revenue) if previous else None)
+    pat_growth_yoy = growth_yoy(_f(latest.pat), _f(previous.pat) if previous else None)
+    eps_growth_yoy = growth_yoy(_f(latest.eps), _f(previous.eps) if previous else None)
+
+    quarterly_snapshots = await _all_quarterly_snapshots(session, instrument.id)
+    if quarterly_snapshots:
+        latest_q = quarterly_snapshots[0]
+        period_ends = [s.period_end for s in quarterly_snapshots]
+        year_ago_end = find_year_ago_period_end(period_ends, latest_q.period_end)
+        if year_ago_end:
+            year_ago_q = next((s for s in quarterly_snapshots if s.period_end == year_ago_end), None)
+            if year_ago_q:
+                revenue_growth_yoy = growth_yoy(_f(latest_q.revenue), _f(year_ago_q.revenue))
+                pat_growth_yoy = growth_yoy(_f(latest_q.pat), _f(year_ago_q.pat))
+                eps_growth_yoy = growth_yoy(_f(latest_q.eps), _f(year_ago_q.eps))
+
     sub_scores = compute_fundamental_score(
-        revenue_growth_yoy=growth_yoy(_f(latest.revenue), _f(previous.revenue) if previous else None),
-        pat_growth_yoy=growth_yoy(_f(latest.pat), _f(previous.pat) if previous else None),
-        eps_growth_yoy=growth_yoy(_f(latest.eps), _f(previous.eps) if previous else None),
+        revenue_growth_yoy=revenue_growth_yoy,
+        pat_growth_yoy=pat_growth_yoy,
+        eps_growth_yoy=eps_growth_yoy,
         roe=roe(_f(latest.pat), _f(latest.equity)),
         roce=roce_simplified(_f(latest.ebit), _f(latest.equity), _f(latest.total_debt)),
         roa=return_on_assets(_f(latest.pat), _f(latest.total_assets)),
@@ -494,9 +526,20 @@ async def score_valuation(
 
 
 async def score_sector_relative_strength(
-    session: AsyncSession, instrument: Instrument, evidence_builder: EvidenceBuilder, now: datetime
+    session: AsyncSession,
+    instrument: Instrument,
+    evidence_builder: EvidenceBuilder,
+    now: datetime,
+    *,
+    stock_df: pd.DataFrame | None = None,
+    precomputed_universe_sector_rs: UniverseSectorRS | None = None,
 ) -> tuple[ComponentResult, SignalPairs]:
-    rs_result = await compute_relative_strength(session, instrument)
+    rs_result = await compute_relative_strength(
+        session,
+        instrument,
+        stock_df=stock_df,
+        precomputed_universe_sector_rs=precomputed_universe_sector_rs,
+    )
     horizon_metric = rs_result.metrics.get("3M")
     if horizon_metric is None or horizon_metric.relative_strength_pct is None:
         reason = horizon_metric.reason if horizon_metric is not None else "insufficient_peer_universe"
@@ -525,9 +568,13 @@ async def score_sector_relative_strength(
 
 
 async def score_market_regime(
-    session: AsyncSession, evidence_builder: EvidenceBuilder, now: datetime
+    session: AsyncSession,
+    evidence_builder: EvidenceBuilder,
+    now: datetime,
+    *,
+    precomputed_regime_row: Any | None = None,
 ) -> tuple[ComponentResult, SignalPairs]:
-    regime_row = await get_latest_regime(session)
+    regime_row = precomputed_regime_row if precomputed_regime_row is not None else await get_latest_regime(session)
     if regime_row is None:
         return _unavailable("market_regime", "market_regime_not_computed"), []
 

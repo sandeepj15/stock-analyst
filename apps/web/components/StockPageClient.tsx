@@ -9,9 +9,10 @@ import {
   getMarketRegime,
   getMomentumScan,
   getPrice,
-  getRelativeStrength,
   getScore,
   getTechnicals,
+  getForecast,
+  type ForecastResponse
 } from "../lib/api";
 import { formatDate } from "../lib/format";
 import {
@@ -23,22 +24,28 @@ import {
   type MomentumScanResponse,
   type PriceResponse,
   type RangeKey,
-  type RelativeStrengthResponse,
   type ScoreResponse,
   type TechnicalsResponse,
 } from "../lib/types";
 import StockCharts from "./StockCharts";
 import TechnicalSummaryPanel from "./TechnicalSummaryPanel";
-import RelativeStrengthPanel from "./RelativeStrengthPanel";
 import TickerHeader from "./TickerHeader";
 import ComponentBreakdownPanel from "./ComponentBreakdownPanel";
 import BullBearPanel from "./BullBearPanel";
 import FundamentalsPanel from "./FundamentalsPanel";
+import HistoricalTrendsChart from "./HistoricalTrendsChart";
+import ShareholdingChart from "./ShareholdingChart";
+import HealthDiagnostics from "./HealthDiagnostics";
+import StockHeroTiles from "./StockHeroTiles";
+import AboutCompanySection from "./AboutCompanySection";
+import AiAnalystChat from "./AiAnalystChat";
+import { getStructuredData, getStockDiagnostic, type StructuredDataResponse } from "../lib/api";
+import type { StockDiagnosticResponse } from "../lib/types";
 
 interface State {
   price: PriceResponse | null;
   technicals: TechnicalsResponse | null;
-  relativeStrength: RelativeStrengthResponse | null;
+  mlForecast: ForecastResponse | null;
   loading: boolean;
   error: string | null;
   notFound: boolean;
@@ -53,15 +60,35 @@ interface Phase3State {
   regime: MarketRegimeResponse | null;
   momentum: MomentumScanResponse | null;
   analystRating: AnalystRatingResponse | null;
+  structuredData: StructuredDataResponse | null;
+  diagnostic: StockDiagnosticResponse | null;
   loading: boolean;
 }
 
+export type TabKey = "overview" | "health" | "financials" | "shareholding" | "ai" | "all";
+
 export default function StockPageClient({ symbol }: { symbol: string }) {
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [range, setRange] = useState<RangeKey>("6M");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "").toLowerCase();
+      if (hash === "health" || hash === "diagnostics") {
+        setActiveTab("health");
+      } else if (hash === "financials" || hash === "fundamentals") {
+        setActiveTab("financials");
+      } else if (hash === "shareholding") {
+        setActiveTab("shareholding");
+      } else if (hash === "ai" || hash === "chat" || hash === "ask-ai") {
+        setActiveTab("ai");
+      }
+    }
+  }, []);
   const [state, setState] = useState<State>({
     price: null,
     technicals: null,
-    relativeStrength: null,
+    mlForecast: null,
     loading: true,
     error: null,
     notFound: false,
@@ -75,6 +102,8 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
     regime: null,
     momentum: null,
     analystRating: null,
+    structuredData: null,
+    diagnostic: null,
     loading: true,
   });
 
@@ -84,21 +113,30 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
 
     async function load() {
       try {
-        const [price, technicals, relativeStrength] = await Promise.all([
+        const [price, technicals] = await Promise.all([
           getPrice(symbol, range),
           getTechnicals(symbol, range),
-          getRelativeStrength(symbol),
         ]);
+        
+        let mlForecast = null;
+        try {
+            mlForecast = await getForecast(symbol);
+        } catch (e) {
+            // Ignore 404 if forecast is not available
+        }
+        
         if (!cancelled) {
-          setState({ price, technicals, relativeStrength, loading: false, error: null, notFound: false });
+          setState({ price, technicals, mlForecast, loading: false, error: null, notFound: false });
         }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
-          setState({ price: null, technicals: null, relativeStrength: null, loading: false, error: err.detail, notFound: true });
+          setState({ price: null, technicals: null,
+    mlForecast: null, loading: false, error: err.detail, notFound: true });
         } else {
           const message = err instanceof ApiError ? err.detail : err instanceof Error ? err.message : "Unknown error";
-          setState({ price: null, technicals: null, relativeStrength: null, loading: false, error: message, notFound: false });
+          setState({ price: null, technicals: null,
+    mlForecast: null, loading: false, error: message, notFound: false });
         }
       }
     }
@@ -119,56 +157,61 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
     setPhase3((s) => ({ ...s, loading: true }));
 
     async function loadPhase3() {
-      let score: ScoreResponse | null = null;
-      let scoreError: string | null = null;
-      let evidenceById = new Map<string, EvidenceItem>();
-      try {
-        score = await getScore(symbol);
-        const evidence = await getEvidence(symbol, 200);
-        evidenceById = new Map(evidence.items.map((item) => [item.id, item]));
-      } catch (err) {
-        scoreError = err instanceof ApiError ? err.detail : "Could not load the research score.";
-      }
+      const fetchScoreAndEvidence = async () => {
+        try {
+          const [score, evidence] = await Promise.all([
+            getScore(symbol),
+            getEvidence(symbol, 200),
+          ]);
+          return { score, evidence, error: null };
+        } catch (err) {
+          return {
+            score: null,
+            evidence: null,
+            error: err instanceof ApiError ? err.detail : "Could not load the research score.",
+          };
+        }
+      };
 
-      let fundamentals: FundamentalsResponse | null = null;
-      let fundamentalsError: string | null = null;
-      try {
-        fundamentals = await getFundamentals(symbol);
-      } catch (err) {
-        fundamentalsError = err instanceof ApiError ? err.detail : "Could not load fundamentals.";
-      }
+      const fetchFundamentals = async () => {
+        try {
+          const data = await getFundamentals(symbol);
+          return { data, error: null };
+        } catch (err) {
+          return {
+            data: null,
+            error: err instanceof ApiError ? err.detail : "Could not load fundamentals.",
+          };
+        }
+      };
 
-      let regime: MarketRegimeResponse | null = null;
-      try {
-        regime = await getMarketRegime();
-      } catch {
-        regime = null; // Not yet computed - MarketRegimeBadge renders its own "not yet computed" state.
-      }
+      const [scoreRes, fundamentalsRes, regime, momentum, analystRating, structuredData, diagnostic] = await Promise.all([
+        fetchScoreAndEvidence(),
+        fetchFundamentals(),
+        getMarketRegime().catch(() => null), // Not yet computed renders its own state
+        getMomentumScan(symbol).catch(() => null), // Renders its own loading/n/a state
+        getAnalystRating(symbol).catch(() => null), // Renders its own no coverage state
+        getStructuredData(symbol).catch(() => null), // New data lake structured fetch
+        getStockDiagnostic(symbol).catch(() => null), // Institutional health & forensics suite
+      ]);
 
-      let momentum: MomentumScanResponse | null = null;
-      try {
-        momentum = await getMomentumScan(symbol);
-      } catch {
-        momentum = null; // Stage2Badge renders its own "loading/n/a" state - never blocks the rest of the page.
-      }
-
-      let analystRating: AnalystRatingResponse | null = null;
-      try {
-        analystRating = await getAnalystRating(symbol);
-      } catch {
-        analystRating = null; // AnalystTargetBadge renders its own "no coverage" state - never blocks the rest of the page.
+      const evidenceById = new Map<string, EvidenceItem>();
+      if (scoreRes.evidence) {
+        scoreRes.evidence.items.forEach((item) => evidenceById.set(item.id, item));
       }
 
       if (!cancelled) {
         setPhase3({
-          score,
-          scoreError,
+          score: scoreRes.score,
+          scoreError: scoreRes.error,
           evidenceById,
-          fundamentals,
-          fundamentalsError,
+          fundamentals: fundamentalsRes.data,
+          fundamentalsError: fundamentalsRes.error,
           regime,
           momentum,
           analystRating,
+          structuredData,
+          diagnostic,
           loading: false,
         });
       }
@@ -193,7 +236,7 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
     );
   }
 
-  if (state.error || !state.price || !state.technicals || !state.relativeStrength) {
+  if (state.error || !state.price || !state.technicals) {
     return (
       <div className="notice error">
         Could not load data for <strong>{symbol}</strong>: {state.error ?? "unknown error"}
@@ -201,7 +244,7 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
     );
   }
 
-  const { price, technicals, relativeStrength } = state;
+  const { price, technicals } = state;
   const bars = price.bars;
   const latest = bars[bars.length - 1];
   const previous = bars.length > 1 ? bars[bars.length - 2] : null;
@@ -213,13 +256,11 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
       <div className="panel ticker-panel">
         <TickerHeader
           symbol={symbol}
+          companyName={price.company_name}
           price={latest.close}
           change={change}
           changePct={changePct}
-          score={phase3.score}
           regime={phase3.regime}
-          momentum={phase3.momentum}
-          analystRating={phase3.analystRating}
         />
         <div className="meta-row">
           {price.exchange} · As of {formatDate(latest.date)}
@@ -237,36 +278,175 @@ export default function StockPageClient({ symbol }: { symbol: string }) {
         )}
       </div>
 
-      <div className="panel">
-        <div className="range-selector">
-          {RANGE_KEYS.map((key) => (
-            <button key={key} className={key === range ? "active" : ""} onClick={() => setRange(key)}>
-              {key}
-            </button>
-          ))}
-        </div>
-        {bars.length === 0 ? (
-          <p className="footnote">No bars in this range.</p>
-        ) : (
-          <StockCharts bars={bars} series={technicals.series} />
-        )}
+      {/* Hero KPI Tiles: Research Score, Stage 2 Momentum, Analyst Coverage */}
+      <StockHeroTiles
+        score={phase3.score}
+        momentum={phase3.momentum}
+        analystRating={phase3.analystRating}
+        price={latest.close}
+      />
+
+      <div className="stock-tabs-nav" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "overview"}
+          className={`stock-tab-btn ${activeTab === "overview" ? "active" : ""}`}
+          onClick={() => setActiveTab("overview")}
+        >
+          <span>📊 Overview &amp; Charts</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "health"}
+          className={`stock-tab-btn ${activeTab === "health" ? "active" : ""}`}
+          onClick={() => setActiveTab("health")}
+        >
+          <span>🛡️ Health &amp; Diagnostics</span>
+          {phase3.diagnostic?.financial_health.piotroski && (
+            <span
+              className={`stock-tab-badge ${
+                phase3.diagnostic.financial_health.piotroski.score >= 7
+                  ? "up"
+                  : phase3.diagnostic.financial_health.piotroski.score >= 4
+                  ? "warn"
+                  : "down"
+              }`}
+            >
+              {phase3.diagnostic.financial_health.piotroski.score}/9
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "financials"}
+          className={`stock-tab-btn ${activeTab === "financials" ? "active" : ""}`}
+          onClick={() => setActiveTab("financials")}
+        >
+          <span>📑 Financials &amp; P&amp;L</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "shareholding"}
+          className={`stock-tab-btn ${activeTab === "shareholding" ? "active" : ""}`}
+          onClick={() => setActiveTab("shareholding")}
+        >
+          <span>👥 Shareholding</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "ai"}
+          className={`stock-tab-btn ai-tab ${activeTab === "ai" ? "active" : ""}`}
+          onClick={() => setActiveTab("ai")}
+        >
+          <span>⚡ Ask AI</span>
+          <span className="stock-tab-badge up">Vertex Gemini</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "all"}
+          className={`stock-tab-btn ${activeTab === "all" ? "active" : ""}`}
+          onClick={() => setActiveTab("all")}
+        >
+          <span>Full Report</span>
+        </button>
       </div>
 
-      <TechnicalSummaryPanel snapshot={technicals.snapshot} />
-      <RelativeStrengthPanel data={relativeStrength} />
-
-      {!phase3.loading && phase3.score && (
+      {/* OVERVIEW & CHARTS TAB */}
+      {(activeTab === "overview" || activeTab === "all") && (
         <>
-          <ComponentBreakdownPanel components={phase3.score.components} evidenceById={phase3.evidenceById} />
-          <BullBearPanel bullCase={phase3.score.bull_case} bearCase={phase3.score.bear_case} />
+          <AboutCompanySection
+            companyName={price.company_name}
+            symbol={symbol}
+            sector={price.sector}
+            industry={price.industry}
+            description={price.description}
+            aiSummary={price.ai_summary}
+            keyPoints={price.key_points}
+            websiteUrl={price.website_url}
+          />
+
+          <div className="panel">
+            <div className="range-selector">
+              {RANGE_KEYS.map((key) => (
+                <button key={key} className={key === range ? "active" : ""} onClick={() => setRange(key)}>
+                  {key}
+                </button>
+              ))}
+            </div>
+            {bars.length === 0 ? (
+              <p className="footnote">No bars in this range.</p>
+            ) : (
+              <StockCharts bars={bars} series={technicals.series} mlForecast={state.mlForecast} />
+            )}
+          </div>
+
+          <TechnicalSummaryPanel snapshot={technicals.snapshot} />
+
+          {!phase3.loading && phase3.score && (
+            <>
+              <ComponentBreakdownPanel components={phase3.score.components} evidenceById={phase3.evidenceById} />
+              <BullBearPanel bullCase={phase3.score.bull_case} bearCase={phase3.score.bear_case} />
+            </>
+          )}
         </>
       )}
 
-      {!phase3.loading && phase3.fundamentals && <FundamentalsPanel data={phase3.fundamentals} />}
-      {!phase3.loading && !phase3.fundamentals && (
-        <div className="panel">
-          <h2>Fundamentals</h2>
-          <div className="notice">Fundamentals unavailable: {phase3.fundamentalsError ?? "unknown error"}</div>
+      {/* HEALTH & DIAGNOSTICS TAB */}
+      {(activeTab === "health" || activeTab === "all") && (
+        <>
+          {!phase3.loading && phase3.diagnostic && (
+            <HealthDiagnostics diagnostic={phase3.diagnostic} />
+          )}
+          {!phase3.loading && !phase3.diagnostic && (
+            <div className="panel">
+              <h2>Health &amp; Diagnostics</h2>
+              <p className="footnote">Diagnostic evaluation unavailable for this stock.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* FINANCIALS & P&L TAB */}
+      {(activeTab === "financials" || activeTab === "all") && (
+        <>
+          {!phase3.loading && phase3.structuredData?.has_data && (
+            <HistoricalTrendsChart data={phase3.structuredData.data} />
+          )}
+          {!phase3.loading && phase3.fundamentals && <FundamentalsPanel data={phase3.fundamentals} />}
+          {!phase3.loading && !phase3.fundamentals && (
+            <div className="panel">
+              <h2>Fundamentals</h2>
+              <div className="notice">Fundamentals unavailable: {phase3.fundamentalsError ?? "unknown error"}</div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* SHAREHOLDING TAB */}
+      {(activeTab === "shareholding" || activeTab === "all") && (
+        <>
+          {!phase3.loading && phase3.structuredData?.has_data && (
+            <ShareholdingChart data={phase3.structuredData.data} />
+          )}
+          {!phase3.loading && !phase3.structuredData?.has_data && (
+            <div className="panel">
+              <h2>Shareholding</h2>
+              <p className="footnote">Shareholding records unavailable for this stock.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ASK AI TAB */}
+      {(activeTab === "ai" || activeTab === "all") && (
+        <div style={{ marginTop: "1rem" }}>
+          <AiAnalystChat initialSymbol={symbol} isEmbedded={true} />
         </div>
       )}
     </>

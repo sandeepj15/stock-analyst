@@ -27,7 +27,6 @@ export default function BreadthGauge({ regime }: { regime: MarketRegimeResponse 
     <div className="pulse-card">
       <div className="pulse-card-head">
         <h3>Market Breadth</h3>
-        {regime && <span className="footnote">{regime.breadth_universe}</span>}
       </div>
       <BreadthBar label="Above 50DMA" pct={regime?.breadth_above_50dma_pct ?? null} />
       <BreadthBar label="Above 200DMA" pct={regime?.breadth_above_200dma_pct ?? null} />

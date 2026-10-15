@@ -2,7 +2,10 @@ FROM node:20-slim
 
 WORKDIR /app
 
-COPY package.json ./
+ENV PORT=3000 \
+    HOSTNAME="0.0.0.0"
+
+COPY package*.json ./
 RUN npm install
 
 COPY . .

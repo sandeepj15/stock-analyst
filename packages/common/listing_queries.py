@@ -17,7 +17,7 @@ refactor).
 """
 from __future__ import annotations
 
-from sqlalchemy import ColumnElement, and_, case, func, select
+from sqlalchemy import ColumnElement, and_, case, func, select, Numeric, text
 from sqlalchemy.sql.selectable import Subquery
 
 from packages.market_data.models import OHLCVDaily
@@ -34,17 +34,17 @@ def latest_research_score_subquery() -> Subquery:
     descending, keep rank 1" pattern - cheaper than a correlated
     subquery per instrument, never N+1.
     """
-    ranked = (
+    return (
         select(
             ResearchScore.instrument_id.label("instrument_id"),
             ResearchScore.score.label("score"),
             ResearchScore.confidence.label("confidence"),
-            func.row_number()
-            .over(partition_by=ResearchScore.instrument_id, order_by=ResearchScore.computed_at.desc())
-            .label("rn"),
+            ResearchScore.computed_at.label("computed_at"),
         )
-    ).subquery()
-    return select(ranked.c.instrument_id, ranked.c.score, ranked.c.confidence).where(ranked.c.rn == 1).subquery()
+        .distinct(ResearchScore.instrument_id)
+        .order_by(ResearchScore.instrument_id, ResearchScore.computed_at.desc())
+        .subquery()
+    )
 
 
 def latest_momentum_subquery() -> Subquery:
@@ -52,35 +52,26 @@ def latest_momentum_subquery() -> Subquery:
     row at the default SMA200-trend lookback (see
     `apps/api/routes/instruments.py`'s docstring for why the lookback is
     pinned rather than "whatever a user queried most recently")."""
-    ranked = (
+    return (
         select(
             MomentumScan.instrument_id.label("instrument_id"),
             MomentumScan.passed.label("passed"),
             MomentumScan.distance_from_52w_high_pct.label("distance_from_52w_high_pct"),
-            func.row_number()
-            .over(partition_by=MomentumScan.instrument_id, order_by=MomentumScan.computed_at.desc())
-            .label("rn"),
-        ).where(MomentumScan.sma200_trend_lookback_days == DEFAULT_SMA200_TREND_LOOKBACK_DAYS)
-    ).subquery()
-    return (
-        select(ranked.c.instrument_id, ranked.c.passed, ranked.c.distance_from_52w_high_pct)
-        .where(ranked.c.rn == 1)
+            MomentumScan.computed_at.label("computed_at"),
+        )
+        .where(MomentumScan.sma200_trend_lookback_days == DEFAULT_SMA200_TREND_LOOKBACK_DAYS)
+        .distinct(MomentumScan.instrument_id)
+        .order_by(MomentumScan.instrument_id, MomentumScan.computed_at.desc())
         .subquery()
     )
 
 
 def latest_price_change_subquery() -> Subquery:
-    """One row per instrument: latest persisted close + day-over-day % change.
+    """One row per instrument: latest persisted close + return % for various timeframes.
 
-    A single window-function scan (never an N+1 per-instrument lookup -
-    SPEC.md section 59, the same lesson already learned for valuation/
-    RS-rank percentiles elsewhere in this codebase). `row_number` picks
-    the latest bar per instrument; `lead(..., 1)` over the same
-    DESC-ordered partition reads the *next* row in that ordering - i.e.
-    the second-most-recent bar (yesterday's close) - directly alongside
-    it, so both closes come out of one scan per instrument, not two.
-    `day_change_pct` is `NULL` (never a crash or a fabricated 0) whenever
-    an instrument has fewer than two OHLCV bars ever ingested.
+    A single window-function scan (never an N+1 per-instrument lookup). 
+    `row_number` picks the latest bar per instrument; `lead` reads offsets for
+    1D (1), 1W (5), 1M (21), 3M (63), 6M (126), and 1Y (252) trading days.
     """
     ranked = (
         select(
@@ -90,20 +81,36 @@ def latest_price_change_subquery() -> Subquery:
             func.row_number()
             .over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc())
             .label("rn"),
-            func.lead(OHLCVDaily.adjusted_close, 1)
-            .over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc())
-            .label("prev_adj_close"),
+            func.lead(OHLCVDaily.adjusted_close, 1).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_1d"),
+            func.lead(OHLCVDaily.adjusted_close, 5).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_1w"),
+            func.lead(OHLCVDaily.adjusted_close, 21).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_1m"),
+            func.lead(OHLCVDaily.adjusted_close, 63).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_3m"),
+            func.lead(OHLCVDaily.adjusted_close, 126).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_6m"),
+            func.lead(OHLCVDaily.adjusted_close, 252).over(partition_by=OHLCVDaily.instrument_id, order_by=OHLCVDaily.trading_date.desc()).label("prev_1y"),
         )
+        .where(OHLCVDaily.trading_date >= text("CURRENT_DATE - INTERVAL '18 months'"))
     ).subquery()
-    day_change_expr = case(
-        (
-            and_(ranked.c.prev_adj_close.isnot(None), ranked.c.prev_adj_close != 0),
-            (ranked.c.adjusted_close - ranked.c.prev_adj_close) / ranked.c.prev_adj_close * 100.0,
-        ),
-        else_=None,
-    )
+    
+    def pct_expr(prev_col):
+        return case(
+            (
+                and_(prev_col.isnot(None), prev_col != 0),
+                (ranked.c.adjusted_close - prev_col) / prev_col * 100.0,
+            ),
+            else_=None,
+        )
+
     return (
-        select(ranked.c.instrument_id, ranked.c.close.label("latest_close"), day_change_expr.label("day_change_pct"))
+        select(
+            ranked.c.instrument_id, 
+            ranked.c.close.label("latest_close"), 
+            pct_expr(ranked.c.prev_1d).label("day_change_pct"),
+            pct_expr(ranked.c.prev_1w).label("return_1w_pct"),
+            pct_expr(ranked.c.prev_1m).label("return_1m_pct"),
+            pct_expr(ranked.c.prev_3m).label("return_3m_pct"),
+            pct_expr(ranked.c.prev_6m).label("return_6m_pct"),
+            pct_expr(ranked.c.prev_1y).label("return_1y_pct"),
+        )
         .where(ranked.c.rn == 1)
         .subquery()
     )
@@ -200,3 +207,35 @@ def latest_fundamental_growth_subquery() -> Subquery:
         .outerjoin(prev_only, prev_only.c.instrument_id == latest_only.c.instrument_id)
         .subquery()
     )
+
+def latest_ml_forecast_subquery() -> Subquery:
+    from packages.common.models import MLForecast
+    
+    # Extract the forecasted close from the latest JSON trajectory and cast to Numeric
+    forecast_close = func.cast(MLForecast.trajectory.op('->')(-1).op('->>')('close'), Numeric)
+
+    return (
+        select(
+            MLForecast.instrument_id.label("instrument_id"),
+            forecast_close.label("ml_forecast_close"),
+            MLForecast.created_at.label("created_at"),
+        )
+        .distinct(MLForecast.instrument_id)
+        .order_by(MLForecast.instrument_id, MLForecast.created_at.desc())
+        .subquery()
+    )
+
+
+def latest_vcp_subquery() -> Subquery:
+    from packages.strategy.models import VcpScan
+    return (
+        select(
+            VcpScan.instrument_id.label("instrument_id"),
+            VcpScan.is_vcp_setup.label("is_vcp_setup"),
+            VcpScan.computed_at.label("computed_at"),
+        )
+        .distinct(VcpScan.instrument_id)
+        .order_by(VcpScan.instrument_id, VcpScan.computed_at.desc())
+        .subquery()
+    )
+

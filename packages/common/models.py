@@ -15,8 +15,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func, Float, Integer
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -49,6 +49,12 @@ class Instrument(Base):
     listing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     delisting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Company overview & profiles (scraped from Screener.in + AI generated summaries)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    ai_summary: Mapped[str | None] = mapped_column(String, nullable=True)
+    key_points: Mapped[str | None] = mapped_column(String, nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -86,3 +92,20 @@ class InstrumentAlias(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug convenience only
         return f"<InstrumentAlias {self.exchange}:{self.symbol} -> {self.instrument_id}>"
+
+from sqlalchemy.dialects.postgresql import JSONB
+
+class MLForecast(Base):
+    __tablename__ = "ml_forecasts"
+    
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instrument_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False)
+    model_name: Mapped[str] = mapped_column(String, nullable=False)
+    as_of_date: Mapped[date] = mapped_column(Date, nullable=False)
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    trajectory: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    actual_trajectory: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    mape: Mapped[float | None] = mapped_column(Float, nullable=True)
+    directional_accuracy: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

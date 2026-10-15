@@ -22,7 +22,12 @@ import type {
   ScoreResponse,
   SectorsResponse,
   SortOrder,
+  StockDiagnosticResponse,
   TechnicalsResponse,
+  AiChatRequest,
+  AiChatResponse,
+  AiStatusResponse,
+  AiStockContextResponse,
 } from "./types";
 
 function apiBaseUrl(): string {
@@ -113,11 +118,17 @@ export function listInstruments(opts?: {
   sort?: InstrumentSortKey;
   order?: SortOrder;
   momentumPass?: boolean;
+  sector?: string;
+  minScore?: number;
+  maxScore?: number;
 }): Promise<InstrumentSummary[]> {
   return getJson<InstrumentSummary[]>("/api/v1/instruments", {
     sort: opts?.sort,
     order: opts?.order,
     momentum_pass: opts?.momentumPass === undefined ? undefined : String(opts.momentumPass),
+    sector: opts?.sector,
+    min_score: opts?.minScore !== undefined ? String(opts.minScore) : undefined,
+    max_score: opts?.maxScore !== undefined ? String(opts.maxScore) : undefined,
   });
 }
 
@@ -170,3 +181,126 @@ export function getEvidence(symbol: string, limit = 100): Promise<EvidenceListRe
 export function getMarketRegime(): Promise<MarketRegimeResponse> {
   return getJson<MarketRegimeResponse>("/api/v1/market/regime");
 }
+
+export interface StructuredDataResponse {
+  has_data: boolean;
+  data: Record<string, Record<string, Record<string, string>>> | null;
+}
+
+export function getStructuredData(symbol: string): Promise<StructuredDataResponse> {
+  return getJson<StructuredDataResponse>(`/api/v1/stocks/${encodeURIComponent(symbol)}/structured`);
+}
+
+export interface ForecastPoint {
+    date: string;
+    close: number;
+    volume: number;
+}
+export interface ForecastResponse {
+    symbol: string;
+    model_name: string;
+    as_of_date: string;
+    horizon_days: number;
+    trajectory: ForecastPoint[];
+    mape: number | null;
+    directional_accuracy: boolean | null;
+}
+export function getForecast(symbol: string): Promise<ForecastResponse> {
+    return getJson<ForecastResponse>(`/api/v1/stocks/${encodeURIComponent(symbol)}/forecast`);
+}
+
+export function getStockDiagnostic(symbol: string): Promise<StockDiagnosticResponse> {
+  return getJson<StockDiagnosticResponse>(`/api/v1/stocks/${encodeURIComponent(symbol)}/diagnostic`);
+}
+
+export function getAiStatus(): Promise<AiStatusResponse> {
+  return getJson<AiStatusResponse>("/api/v1/ai/status");
+}
+
+export function getAiStockContext(symbol: string): Promise<AiStockContextResponse> {
+  return getJson<AiStockContextResponse>(`/api/v1/ai/stocks/${encodeURIComponent(symbol)}/context`);
+}
+
+export async function postAiChat(req: AiChatRequest): Promise<AiChatResponse> {
+  const url = new URL("/api/v1/ai/chat", apiBaseUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ detail: "Chat request failed" }));
+    throw new ApiError(res.status, errBody.detail || "Chat request failed");
+  }
+  return res.json();
+}
+
+export async function streamAiChat(
+  req: AiChatRequest,
+  onToken: (token: string) => void,
+  onMeta?: (meta: any) => void,
+  onStatus?: (status: string) => void
+): Promise<string> {
+  const url = new URL("/api/v1/ai/chat/stream", apiBaseUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new ApiError(res.status, errorText || "Stream request failed");
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new ApiError(0, "ReadableStream not supported");
+  const decoder = new TextDecoder("utf-8");
+  let fullText = "";
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || !line.startsWith("data:")) continue;
+      const jsonStr = line.replace(/^data:\s*/, "").trim();
+      if (!jsonStr) continue;
+      let payload: any = null;
+      try {
+        payload = JSON.parse(jsonStr);
+      } catch {
+        continue;
+      }
+      if (payload.type === "meta" && onMeta) {
+        onMeta(payload);
+      } else if (payload.type === "status" && onStatus) {
+        onStatus(payload.status);
+      } else if (payload.type === "token") {
+        fullText += payload.content;
+        onToken(payload.content);
+      } else if (payload.type === "error") {
+        throw new ApiError(500, payload.error);
+      }
+    }
+  }
+
+  // Flush remaining buffer if present
+  if (buffer.trim().startsWith("data:")) {
+    const jsonStr = buffer.trim().replace(/^data:\s*/, "").trim();
+    try {
+      const payload = JSON.parse(jsonStr);
+      if (payload.type === "token") {
+        fullText += payload.content;
+        onToken(payload.content);
+      }
+    } catch {
+      // ignore trailing chunk parse errors
+    }
+  }
+
+  return fullText;
+}
+

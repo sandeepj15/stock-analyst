@@ -10,6 +10,9 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from apps.worker.jobs import (
+    check_missed_market_close_sync,
+    generate_ml_forecasts_job,
+    evaluate_ml_forecasts_job,
     compute_all_momentum_scans_job,
     compute_all_scores_job,
     daily_market_close_sync,
@@ -34,6 +37,7 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
+    job_timeout = 3600  # 1 hour timeout for batch processing of 1,510 stocks
     functions = [
         sync_daily_bars,
         sync_fundamentals_job,
@@ -42,14 +46,17 @@ class WorkerSettings:
         sync_market_regime,
         compute_all_scores_job,
         compute_all_momentum_scans_job,
+        generate_ml_forecasts_job,
         # Also independently/manually callable (e.g. `docker compose exec
         # worker python -c "..."`, same pattern as every job above) in
         # addition to running on the cron schedule below.
         daily_market_close_sync,
+        check_missed_market_close_sync,
     ]
     cron_jobs = [
         cron(
             daily_market_close_sync,
+            timeout=3600,
             # --- IST <-> UTC reasoning (read this before touching the schedule) ---
             # NSE (National Stock Exchange, India) closes at 15:30 IST.
             # IST is a fixed UTC+5:30 offset year-round (India observes no
@@ -97,6 +104,14 @@ class WorkerSettings:
             weekday=5,
             hour=2,
             minute=0,
+        ),
+        cron(
+            check_missed_market_close_sync,
+            # Heartbeat catch-up: runs on worker startup (e.g. laptop wake)
+            # and every 15 minutes to catch any missed market-close syncs.
+            minute={0, 15, 30, 45},
+            run_at_startup=True,
+            timeout=3600,
         ),
     ]
     redis_settings = RedisSettings.from_dsn(_settings.REDIS_URL)

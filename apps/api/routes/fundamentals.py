@@ -499,3 +499,23 @@ async def get_fundamentals(
         fundamental_score=fundamental_score,
         quarterly=quarterly,
     )
+
+@router.get("/{symbol}/structured")
+async def get_structured_data(
+    symbol: str,
+    exchange: str = Query(default="NSE"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    instrument = await resolve_instrument_or_404(session, symbol, exchange)
+    from packages.fundamentals.models import StructuredProviderData
+    stmt = (
+        select(StructuredProviderData.data)
+        .where(StructuredProviderData.instrument_id == instrument.id)
+        .order_by(StructuredProviderData.parsed_at.desc())
+        .limit(1)
+    )
+    data = (await session.execute(stmt)).scalar_one_or_none()
+    if not data:
+        return {"has_data": False, "data": None}
+    return {"has_data": True, "data": data}
+

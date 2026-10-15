@@ -129,13 +129,15 @@ class CompositeAnalystEstimateProvider:
     def get_analyst_estimates_batch(self, instruments: list[tuple[str, str]]) -> dict[tuple[str, str], AnalystEstimateData | None]:
         primary_results = self._primary.get_analyst_estimates_batch(instruments)
         
-        # Only fallback for the ones that need it
+        # Only fallback for the ones that need it, restricted to small batches (<= 25)
+        # to prevent hundreds of sequential yfinance HTTP requests from blocking large batch cron jobs.
         fallback_instruments = []
-        for inst in instruments:
-            primary_res = primary_results.get(inst)
-            # If primary completely missed it, or is missing some fields, we might need fallback
-            if primary_res is None or any(getattr(primary_res, f, None) is None for f in PRICE_TARGET_FIELDS) or any(getattr(primary_res, f, None) is None for f in RECOMMENDATION_FIELDS):
-                fallback_instruments.append(inst)
+        if len(instruments) <= 25:
+            for inst in instruments:
+                primary_res = primary_results.get(inst)
+                # If primary completely missed it, or is missing some fields, we might need fallback
+                if primary_res is None or any(getattr(primary_res, f, None) is None for f in PRICE_TARGET_FIELDS) or any(getattr(primary_res, f, None) is None for f in RECOMMENDATION_FIELDS):
+                    fallback_instruments.append(inst)
                 
         if fallback_instruments:
             fallback_results = self._fallback.get_analyst_estimates_batch(fallback_instruments)

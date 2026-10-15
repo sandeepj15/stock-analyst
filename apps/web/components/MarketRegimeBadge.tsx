@@ -35,7 +35,7 @@ export default function MarketRegimeBadge({ regime }: { regime: MarketRegimeResp
       className={`regime-badge ${tone}`}
       title={`Nifty vs 200DMA: ${regime.nifty_vs_200dma_pct?.toFixed(1) ?? "—"}% · Breadth >50DMA: ${
         regime.breadth_above_50dma_pct?.toFixed(0) ?? "—"
-      }% (${regime.breadth_universe}) · as of ${regime.date}`}
+      }% · as of ${regime.date}`}
     >
       Market regime: {label}
     </span>

@@ -1,6 +1,7 @@
 """Momentum indicators (SPEC.md section 14): RSI, MACD, ROC, Stochastic."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from packages.analytics.trend import ema, wilder_smooth
@@ -69,8 +70,8 @@ def stochastic(
     """
     lowest_low = low.rolling(window=k_window, min_periods=k_window).min()
     highest_high = high.rolling(window=k_window, min_periods=k_window).max()
-    denom = (highest_high - lowest_low).replace(0.0, pd.NA)
+    denom = (highest_high - lowest_low).replace(0.0, np.nan)
     percent_k = 100.0 * (close - lowest_low) / denom
-    percent_k = percent_k.astype(float)
+    percent_k = pd.to_numeric(percent_k, errors="coerce").astype(float)
     percent_d = percent_k.rolling(window=d_window, min_periods=d_window).mean()
     return percent_k, percent_d

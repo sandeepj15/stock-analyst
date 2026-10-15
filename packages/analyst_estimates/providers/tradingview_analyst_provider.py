@@ -57,7 +57,8 @@ import math
 from datetime import UTC, datetime
 from typing import Any
 
-from tradingview_ta import Interval, TA_Handler, TradingView
+import requests
+from tradingview_ta import TradingView
 
 from packages.analyst_estimates.base import AnalystEstimateData
 from packages.common.rate_limit import RetryPolicy, call_with_retry
@@ -66,6 +67,9 @@ logger = logging.getLogger(__name__)
 
 SOURCE_NAME = "tradingview_ta"
 SCREENER = "india"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
 # Appended to TradingView's default technical-indicator column list,
 # never replacing it - same accommodation as
@@ -75,6 +79,7 @@ _ANALYST_COLUMNS = (
     "price_target_median",
     "price_target_high",
     "price_target_low",
+    "price_target_1y",
 )
 
 _RETRY_POLICY = RetryPolicy(max_attempts=3, base_delay_seconds=1.5, max_delay_seconds=6.0)
@@ -104,108 +109,94 @@ class TradingViewAnalystEstimateProvider:
 
     def get_analyst_estimate(self, symbol: str, exchange: str) -> AnalystEstimateData | None:
         if exchange.upper() != "NSE":
-            # The `india` screener only covers NSE/BSE-style India listings -
-            # never guess a mapping for an exchange not verified against.
             return None
+        batch_res = self.get_analyst_estimates_batch([(symbol, exchange)])
+        return batch_res.get((symbol, exchange))
 
-        def _fetch() -> dict[str, Any]:
-            handler = TA_Handler(
-                symbol=symbol.upper(), exchange=exchange.upper(), screener=SCREENER, interval=Interval.INTERVAL_1_DAY
-            )
-            handler.indicators = TradingView.indicators.copy() + list(_ANALYST_COLUMNS)
-            analysis = handler.get_analysis()
-            return dict(analysis.indicators)
-
-        fields = call_with_retry(_fetch, policy=_RETRY_POLICY, retry_on=(Exception,))
-
-        target_mean = _safe_float(fields.get("price_target_average"))
-        target_median = _safe_float(fields.get("price_target_median"))
-        target_high = _safe_float(fields.get("price_target_high"))
-        target_low = _safe_float(fields.get("price_target_low"))
-
-        if all(v is None for v in (target_mean, target_median, target_high, target_low)):
-            # Genuinely zero analyst-target coverage from this provider
-            # either - never fabricate a value out of nothing.
-            return None
-
-        return AnalystEstimateData(
-            symbol=symbol.upper(),
-            exchange=exchange.upper(),
-            target_mean_price=target_mean,
-            target_high_price=target_high,
-            target_low_price=target_low,
-            target_median_price=target_median,
-            recommendation_mean=None,
-            recommendation_key=None,
-            number_of_analyst_opinions=None,
-            source=SOURCE_NAME,
-            source_timestamp=datetime.now(UTC),
-        )
-
-    def get_analyst_estimates_batch(self, instruments: list[tuple[str, str]]) -> dict[tuple[str, str], AnalystEstimateData | None]:
+    def get_analyst_estimates_batch(
+        self, instruments: list[tuple[str, str]]
+    ) -> dict[tuple[str, str], AnalystEstimateData | None]:
         if not instruments:
             return {}
-            
-        tv_symbols = []
-        # TV requires EXCHANGE:SYMBOL
+
+        results: dict[tuple[str, str], AnalystEstimateData | None] = {}
+        tv_symbol_to_inst: dict[str, tuple[str, str]] = {}
+        tv_symbols: list[str] = []
+
         for symbol, exchange in instruments:
             if exchange.upper() == "NSE":
-                tv_symbols.append(f"NSE:{symbol.upper()}")
-                
-        if not tv_symbols:
-            return {inst: None for inst in instruments}
-            
-        def _fetch():
-            from tradingview_ta import get_multiple_analysis, Interval
-            return get_multiple_analysis(
-                screener=SCREENER,
-                interval=Interval.INTERVAL_1_DAY,
-                symbols=tv_symbols,
-                additional_indicators=list(_ANALYST_COLUMNS)
-            )
-            
-        try:
-            analysis_dict = call_with_retry(_fetch, policy=_RETRY_POLICY, retry_on=(Exception,))
-        except Exception as exc:
-            logger.warning("tradingview_ta analyst-estimates batch fetch failed", extra={"error": str(exc)})
-            raise  # Let it propagate so we don't wipe out data!
-            
-        results = {}
-        for symbol, exchange in instruments:
-            if exchange.upper() != "NSE":
+                sanitized = symbol.upper().replace("-", "_")
+                tv_sym = f"NSE:{sanitized}"
+                tv_symbol_to_inst[tv_sym] = (symbol, exchange)
+                tv_symbols.append(tv_sym)
+            else:
                 results[(symbol, exchange)] = None
-                continue
-                
-            tv_key = f"NSE:{symbol.upper()}"
-            analysis = analysis_dict.get(tv_key)
-            
-            if analysis is None or not analysis.indicators:
-                results[(symbol, exchange)] = None
-                continue
-                
-            fields = analysis.indicators
-            
-            target_mean = _safe_float(fields.get("price_target_average"))
-            target_median = _safe_float(fields.get("price_target_median"))
-            target_high = _safe_float(fields.get("price_target_high"))
-            target_low = _safe_float(fields.get("price_target_low"))
 
-            if all(v is None for v in (target_mean, target_median, target_high, target_low)):
-                results[(symbol, exchange)] = None
+        if not tv_symbols:
+            return results
+
+        chunk_size = 250
+        cols = list(_ANALYST_COLUMNS)
+        scan_url = f"{TradingView.scan_url}{SCREENER}/scan"
+        headers = {"User-Agent": DEFAULT_USER_AGENT}
+
+        for i in range(0, len(tv_symbols), chunk_size):
+            chunk = tv_symbols[i : i + chunk_size]
+
+            def _fetch_chunk(symbols_chunk: list[str] = chunk) -> dict[str, Any]:
+                payload = {"symbols": {"tickers": symbols_chunk}, "columns": cols}
+                resp = requests.post(scan_url, json=payload, headers=headers, timeout=15)
+                resp.raise_for_status()
+                return resp.json()
+
+            try:
+                data = call_with_retry(_fetch_chunk, policy=_RETRY_POLICY, retry_on=(Exception,))
+            except Exception as exc:
+                logger.warning("tradingview_ta analyst-estimates batch fetch chunk failed", extra={"error": str(exc)})
                 continue
-                
-            results[(symbol, exchange)] = AnalystEstimateData(
-                symbol=symbol.upper(),
-                exchange=exchange.upper(),
-                target_mean_price=target_mean,
-                target_high_price=target_high,
-                target_low_price=target_low,
-                target_median_price=target_median,
-                recommendation_mean=None,
-                recommendation_key=None,
-                number_of_analyst_opinions=None,
-                source=SOURCE_NAME,
-                source_timestamp=datetime.now(UTC),
-            )
-            
+
+            for item in data.get("data", []):
+                tv_key = item.get("s")
+                d = item.get("d", [])
+                if not tv_key or not d:
+                    continue
+
+                # Indices correspond to _ANALYST_COLUMNS
+                # 0: price_target_average
+                # 1: price_target_median
+                # 2: price_target_high
+                # 3: price_target_low
+                # 4: price_target_1y
+                target_mean = _safe_float(d[0]) or _safe_float(d[4])
+                target_median = _safe_float(d[1])
+                target_high = _safe_float(d[2])
+                target_low = _safe_float(d[3])
+
+                inst = tv_symbol_to_inst.get(tv_key)
+                if not inst:
+                    continue
+
+                if all(v is None for v in (target_mean, target_median, target_high, target_low)):
+                    results[inst] = None
+                    continue
+
+                results[inst] = AnalystEstimateData(
+                    symbol=inst[0].upper(),
+                    exchange=inst[1].upper(),
+                    target_mean_price=target_mean,
+                    target_high_price=target_high,
+                    target_low_price=target_low,
+                    target_median_price=target_median,
+                    recommendation_mean=None,
+                    recommendation_key=None,
+                    number_of_analyst_opinions=None,
+                    source=SOURCE_NAME,
+                    source_timestamp=datetime.now(UTC),
+                )
+
+        # Fill any missing requested instruments with None
+        for inst in instruments:
+            if inst not in results:
+                results[inst] = None
+
         return results

@@ -26,6 +26,9 @@ from packages.common.models import Instrument
 from packages.indicators import IndicatorSnapshot, compute_indicator_series, compute_indicator_snapshot
 from packages.market_data.history import load_ohlcv_dataframe
 from packages.market_data.relative_strength import compute_relative_strength
+from packages.fundamentals.health import FinancialHealthResult
+from packages.fundamentals.shareholding_flow import ShareholdingFlowResult
+from packages.market_data.technicals_health import TechnicalHealthResult
 
 router = APIRouter(prefix="/api/v1/stocks", tags=["stocks"])
 
@@ -77,6 +80,13 @@ class PriceBar(BaseModel):
 class PriceResponse(BaseModel):
     symbol: str
     exchange: str
+    company_name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    description: str | None = None
+    ai_summary: str | None = None
+    key_points: str | None = None
+    website_url: str | None = None
     range: RangeKey
     start_date: str | None
     end_date: str | None
@@ -225,6 +235,13 @@ async def get_price(
     return PriceResponse(
         symbol=instrument.symbol,
         exchange=instrument.exchange,
+        company_name=instrument.company_name,
+        sector=instrument.sector,
+        industry=instrument.industry,
+        description=instrument.description,
+        ai_summary=instrument.ai_summary,
+        key_points=instrument.key_points,
+        website_url=instrument.website_url,
         range=range,
         start_date=windowed["trading_date"].iloc[0].isoformat() if not windowed.empty else None,
         end_date=windowed["trading_date"].iloc[-1].isoformat() if not windowed.empty else None,
@@ -326,3 +343,100 @@ async def get_relative_strength(
         metrics=metrics,
         data_freshness=_data_freshness(result.stock_df),
     )
+
+class ForecastPoint(BaseModel):
+    date: str
+    close: float
+    volume: float
+
+class ForecastResponse(BaseModel):
+    symbol: str
+    model_name: str
+    as_of_date: str
+    horizon_days: int
+    trajectory: list[ForecastPoint]
+    mape: float | None
+    directional_accuracy: bool | None
+
+@router.get("/{symbol}/forecast", response_model=ForecastResponse)
+async def get_forecast(
+    symbol: str,
+    exchange: str = Query(default="NSE"),
+    session: AsyncSession = Depends(get_db_session),
+) -> ForecastResponse:
+    """Retrieve the latest ML projection for this instrument."""
+    from sqlalchemy import select
+    from packages.common.models import MLForecast
+    
+    instrument = await _resolve_or_404(session, symbol, exchange)
+    
+    query = select(MLForecast).where(MLForecast.instrument_id == instrument.id).order_by(MLForecast.created_at.desc()).limit(1)
+    result = await session.execute(query)
+    forecast = result.scalar_one_or_none()
+    
+    if not forecast:
+        raise HTTPException(status_code=404, detail="No ML forecast available for this instrument.")
+        
+    # The dictionary trajectory has 'date', 'close', 'volume'
+    # Wait, in jobs.py: it inserted timestamps, not date. 
+    # Let me check what jobs.py inserted.
+    return ForecastResponse(
+        symbol=instrument.symbol,
+        model_name=forecast.model_name,
+        as_of_date=forecast.as_of_date.isoformat(),
+        horizon_days=forecast.horizon_days,
+        trajectory=[
+            ForecastPoint(
+                date=pt.get("timestamps", pt.get("date", str(pt.get("timestamps")))),
+                close=pt["close"],
+                volume=pt["volume"]
+            ) 
+            for pt in forecast.trajectory
+        ],
+        mape=forecast.mape,
+        directional_accuracy=forecast.directional_accuracy,
+    )
+
+
+class StockDiagnosticResponse(BaseModel):
+    symbol: str
+    company_name: str
+    financial_health: FinancialHealthResult
+    shareholding_flow: ShareholdingFlowResult
+    technical_health: TechnicalHealthResult
+
+
+@router.get("/{symbol}/diagnostic", response_model=StockDiagnosticResponse)
+async def get_stock_diagnostic(
+    symbol: str,
+    exchange: str = Query(default="NSE"),
+    session: AsyncSession = Depends(get_db_session),
+) -> StockDiagnosticResponse:
+    """Consolidated institutional diagnostic suite: Financial Health, Forensics, Smart Money, Technicals."""
+    from packages.common import cache
+    from packages.fundamentals.health import compute_financial_health_diagnostic
+    from packages.fundamentals.shareholding_flow import compute_shareholding_flow
+    from packages.market_data.technicals_health import compute_technical_health
+
+    instrument = await _resolve_or_404(session, symbol, exchange)
+    cache_key = f"signalforge:stock_diagnostic:{instrument.id}"
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        try:
+            return StockDiagnosticResponse.model_validate(cached)
+        except Exception:
+            pass
+
+    fin_health = await compute_financial_health_diagnostic(session, instrument.id)
+    sh_flow = await compute_shareholding_flow(session, instrument.id)
+    tech_health = await compute_technical_health(session, instrument.id)
+
+    response = StockDiagnosticResponse(
+        symbol=instrument.symbol,
+        company_name=instrument.company_name,
+        financial_health=fin_health,
+        shareholding_flow=sh_flow,
+        technical_health=tech_health,
+    )
+    await cache.set_json(cache_key, response.model_dump(mode="json"), ttl_seconds=120)
+    return response

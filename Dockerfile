@@ -12,13 +12,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
-# Install dependencies first (without the local package) so this layer is
-# cached unless pyproject.toml changes.
 RUN pip install --no-cache-dir --upgrade pip
+# Pre-install CPU-only PyTorch so pip avoids pulling 3.5GB+ of unused CUDA/cuDNN GPU binaries
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY . .
 RUN pip install --no-cache-dir -e ".[dev]"
+RUN chmod +x scripts/docker-entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

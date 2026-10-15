@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { SectorsResponse } from "../lib/types";
 import { CHART_PALETTES } from "../lib/theme";
 import { useTheme } from "../lib/useTheme";
@@ -14,15 +14,6 @@ import { useTheme } from "../lib/useTheme";
 // = two hues + a neutral midpoint" rule - never a rainbow, never a new
 // palette. Color intensity (not hue) scales with magnitude, clamped to
 // a +/-3% band so one outlier sector never washes out the rest.
-//
-// `"use client"` + `useTheme()` (rather than a plain CSS `var(--up)`
-// background) because this needs the *rgb components* of --up/--down to
-// build a translucent `rgba(...)` fill at a magnitude-scaled alpha - a
-// CSS variable alone can't be alpha-blended in an inline style. Reads
-// `CHART_PALETTES` (lib/theme.ts), the same hex values already used by
-// lightweight-charts, so dark vs. light mode each get their own correct
-// hue (dataviz skill: dark mode is a selected step, never an automatic
-// flip), not the dark palette's RGB baked in regardless of theme.
 const CLAMP_PCT = 3;
 
 function hexToRgb(hex: string): string {
@@ -33,6 +24,8 @@ function hexToRgb(hex: string): string {
   return `${r}, ${g}, ${b}`;
 }
 
+export type SectorSortKey = "pct_desc" | "pct_asc" | "name" | "score";
+
 interface Props {
   data: SectorsResponse | null;
   selectedSector: string | null;
@@ -42,6 +35,7 @@ interface Props {
 export default function SectorHeatmap({ data, selectedSector, onSelectSector }: Props) {
   const [theme] = useTheme();
   const palette = CHART_PALETTES[theme];
+  const [sortKey, setSortKey] = useState<SectorSortKey>("pct_desc");
 
   function cellStyle(avgDayChangePct: number | null): CSSProperties {
     if (avgDayChangePct === null) return { background: "var(--surface-alt)" };
@@ -50,6 +44,34 @@ export default function SectorHeatmap({ data, selectedSector, onSelectSector }: 
     const color = avgDayChangePct >= 0 ? hexToRgb(palette.up) : hexToRgb(palette.down);
     return { background: `rgba(${color}, ${alpha})` };
   }
+
+  const sortedSectors = useMemo(() => {
+    if (!data?.sectors) return [];
+    const list = [...data.sectors];
+    switch (sortKey) {
+      case "pct_desc":
+        return list.sort((a, b) => {
+          const valA = a.avg_day_change_pct ?? -Infinity;
+          const valB = b.avg_day_change_pct ?? -Infinity;
+          return valB - valA;
+        });
+      case "pct_asc":
+        return list.sort((a, b) => {
+          const valA = a.avg_day_change_pct ?? Infinity;
+          const valB = b.avg_day_change_pct ?? Infinity;
+          return valA - valB;
+        });
+      case "score":
+        return list.sort((a, b) => {
+          const valA = a.avg_score ?? -Infinity;
+          const valB = b.avg_score ?? -Infinity;
+          return valB - valA;
+        });
+      case "name":
+      default:
+        return list.sort((a, b) => a.sector.localeCompare(b.sector));
+    }
+  }, [data?.sectors, sortKey]);
 
   if (!data) {
     return (
@@ -63,11 +85,48 @@ export default function SectorHeatmap({ data, selectedSector, onSelectSector }: 
   return (
     <div className="pulse-card sector-heatmap-card">
       <div className="pulse-card-head">
-        <h3>Sector Performance</h3>
-        <span className="footnote">Avg Research Score · Avg day change · Stage 2 passes</span>
+        <div className="sector-head-info">
+          <h3>Sector Performance</h3>
+          <span className="footnote">Avg Research Score · Avg day change · Stage 2 passes</span>
+        </div>
+        <div className="sector-sort-controls" role="toolbar" aria-label="Sort sectors">
+          <span className="sector-sort-label">Sort:</span>
+          <button
+            type="button"
+            className={`sector-sort-pill ${sortKey === "pct_desc" ? "active" : ""}`}
+            onClick={() => setSortKey(sortKey === "pct_desc" ? "pct_asc" : "pct_desc")}
+            title="Sort by Day Change % (Highest to Lowest)"
+          >
+            % ▼
+          </button>
+          <button
+            type="button"
+            className={`sector-sort-pill ${sortKey === "pct_asc" ? "active" : ""}`}
+            onClick={() => setSortKey("pct_asc")}
+            title="Sort by Day Change % (Lowest to Highest)"
+          >
+            % ▲
+          </button>
+          <button
+            type="button"
+            className={`sector-sort-pill ${sortKey === "name" ? "active" : ""}`}
+            onClick={() => setSortKey("name")}
+            title="Sort Alphabetically (A to Z)"
+          >
+            A–Z
+          </button>
+          <button
+            type="button"
+            className={`sector-sort-pill ${sortKey === "score" ? "active" : ""}`}
+            onClick={() => setSortKey("score")}
+            title="Sort by Average Research Score (Highest first)"
+          >
+            Score
+          </button>
+        </div>
       </div>
       <div className="sector-heatmap-grid" role="group" aria-label="Sector performance - click a sector to filter the table">
-        {data.sectors.map((s) => {
+        {sortedSectors.map((s) => {
           const active = selectedSector === s.sector;
           return (
             <button
@@ -76,7 +135,7 @@ export default function SectorHeatmap({ data, selectedSector, onSelectSector }: 
               className={`sector-cell${active ? " active" : ""}`}
               style={cellStyle(s.avg_day_change_pct)}
               onClick={() => onSelectSector(active ? null : s.sector)}
-              title={`${s.sector}: ${s.instrument_count} stocks - click to filter the table`}
+              title={`${s.sector}: ${s.instrument_count} stocks (${s.avg_day_change_pct !== null ? `${s.avg_day_change_pct >= 0 ? "+" : ""}${s.avg_day_change_pct.toFixed(2)}%` : "0%"}) - click to filter table`}
               aria-pressed={active}
             >
               <div className="sector-cell-name">{s.sector}</div>

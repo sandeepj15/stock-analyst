@@ -45,9 +45,13 @@ class Settings(BaseSettings):
     # recommendation source) - see packages/analyst_estimates/factory.py.
     ANALYST_ESTIMATE_PROVIDER: str | None = Field(default=None)
 
-    # --- LLM / AI layer (future phase, Phase 10) ---
-    LLM_PROVIDER: str | None = Field(default=None)
+    # --- LLM / AI layer (Vertex AI Gemini) ---
+    LLM_PROVIDER: str | None = Field(default="vertex_ai")
     LLM_API_KEY: str | None = Field(default=None)
+    VERTEX_AI_MODEL: str = Field(default="gemini-3.5-flash")
+    VERTEX_AI_LOCATION: str = Field(default="global")
+    VERTEX_PROJECT_ID: str = Field(default="onboarding-bot-458509")
+    GOOGLE_APPLICATION_CREDENTIALS: str | None = Field(default=None)
 
     # --- Security (auth is deferred, but secrets are provisioned now) ---
     JWT_SECRET: str = Field(default="dev-only-change-me")

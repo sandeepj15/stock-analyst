@@ -1,9 +1,11 @@
 # SignalForge
 
 SignalForge is an evidence-first market research and decision-support platform
-for retail investors (Indian equities first). The full product/engineering
-specification lives in [`SPEC.md`](./SignalForge_Trading_Research_Engine_SPEC.md)
-— read it before changing anything.
+for retail investors (Indian equities first).
+
+> 🤖 **Working with an AI Coding Agent?** Read [`AGENT_CONTEXT.md`](./AGENT_CONTEXT.md) for the authoritative end-to-end architecture, domain models, scoring formulas, API endpoints, background schedules, and developer rules.
+
+The full product/engineering specification lives in [`SPEC.md`](./SignalForge_Trading_Research_Engine_SPEC.md).
 
 **This repository currently implements SPEC.md's Phases 0-4 scope:**
 
@@ -59,32 +61,35 @@ types. **No code outside `packages/market_data` imports `yfinance` directly.**
 implementation right now, and it is explicitly a local-development-only
 provider — see [`DATA_SOURCES.md`](./DATA_SOURCES.md).
 
-## Local development from a clean checkout
+## Server & Local Deployment (1-Command Startup)
 
-Prerequisites: Docker + Docker Compose. (A local Python 3.12 virtualenv is
-only needed if you want to run tests/lint outside Docker — see below.)
+Prerequisites: Docker + Docker Compose installed.
+
+To run the entire platform (PostgreSQL, Redis, FastAPI API, Arq background worker, and Next.js Web UI) in **1 command**:
 
 ```bash
-cp .env.example .env
-# generate real secrets (dev-only placeholders won't fail anything, but don't ship them):
-#   openssl rand -hex 32   # paste into JWT_SECRET
-#   openssl rand -hex 32   # paste into ENCRYPTION_KEY
-
-make up        # docker compose up --build  (postgres, redis, api, worker, web)
-make migrate   # alembic upgrade head, run inside the api container
-make seed      # scripts/seed_dev_data.py, run inside the api container
-                # seeds 20 NSE large-caps + ~2 years of daily bars via yfinance
-make test      # pytest (see "Running tests locally" below)
-make lint      # ruff check + mypy
+./start.sh
 ```
 
-Once `make up` is running:
-- API: http://localhost:8000 (`/health`, `/health/db`, `/health/redis`,
-  `/api/v1/instruments/search?q=RELI`, `/api/v1/instruments/RELIANCE`)
-- Web frontend: http://localhost:3000 (Next.js UI implementing the stock research dashboard, market regimes, screener, and charting)
+*(Alternatively: `docker compose up --build -d` or `make up`)*
 
-`make backtest` is a placeholder (`echo "Backtesting not implemented yet"`) —
-backtesting is SPEC.md Phase 6, out of scope here.
+### What happens automatically on first boot:
+1. `.env` is initialized from `.env.example` with generated cryptographic secrets if not present.
+2. PostgreSQL (16) and Redis (7) are provisioned with automated health checks.
+3. Database migrations (`alembic upgrade head`) execute automatically before services start.
+4. If running on a brand-new database, the core universe is bootstrapped so the UI is immediately functional.
+5. The Arq background worker starts with automated catch-up scheduling.
+6. The Next.js frontend connects to the backend API container and exposes port 3000.
+
+### Accessing Services:
+- **Web UI**: http://localhost:3000 (Stock research dashboard, screener, charting, AI analyst)
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health/db
+
+### For Local Development with Live Hot-Reloading:
+```bash
+make dev     # or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
 
 ### Docker layout
 

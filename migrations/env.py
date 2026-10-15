@@ -11,7 +11,8 @@ import packages.fundamentals.models  # noqa: F401  (registers fundamental_snapsh
 import packages.market_data.models  # noqa: F401  (registers ohlcv_daily, data_ingestion_runs, data_quality_events)
 import packages.momentum.models  # noqa: F401  (registers momentum_scans)
 import packages.regime.models  # noqa: F401  (registers market_regimes)
-import packages.scoring.models  # noqa: F401  (registers evidence_items, research_scores)
+import packages.scoring.models  # noqa: F401
+import packages.strategy.models  # noqa: F401
 
 # Import every ORM model package so Base.metadata is fully populated for
 # autogenerate. common.models must be imported first (it defines Base),

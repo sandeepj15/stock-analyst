@@ -24,17 +24,25 @@ export interface InstrumentSummary {
   // that batch job has run, or when the stock has insufficient history
   // to evaluate (never a fabricated true/false either way).
   momentum_pass: boolean | null;
+  is_vcp_setup: boolean | null;
+
   distance_from_52w_high_pct: number | null;
   // Day-over-day % price change (apps/api/routes/instruments.py's
   // single window-function query) - null when an instrument has fewer
   // than two OHLCV bars ever ingested.
   day_change_pct: number | null;
+  return_1w_pct: number | null;
+  return_1m_pct: number | null;
+  return_3m_pct: number | null;
+  return_6m_pct: number | null;
+  return_1y_pct: number | null;
   // Most recently persisted packages/analyst_estimates/ row.
   // `analyst_upside_pct` is computed server-side against this listing's
   // latest persisted close - null whenever the instrument has zero
   // analyst coverage (common for mid/small-cap NSE names).
   analyst_target_price: number | null;
   analyst_upside_pct: number | null;
+  ml_forecast_5d_pct: number | null;
   analyst_recommendation: string | null;
   revenue_growth_yoy: number | null;
   pat_growth_yoy: number | null;
@@ -46,11 +54,23 @@ export type InstrumentSortKey =
   | "sector"
   | "score"
   | "momentum_pass"
+  | "is_vcp_setup"
   | "analyst_upside_pct"
+  | "ml_forecast_5d_pct"
   | "day_change_pct"
+  | "return_1w_pct"
+  | "return_1m_pct"
+  | "return_3m_pct"
+  | "return_6m_pct"
+  | "return_1y_pct"
   | "revenue_growth_yoy"
   | "pat_growth_yoy";
 export type SortOrder = "asc" | "desc";
+
+export interface SortCriterion {
+  key: InstrumentSortKey;
+  order: SortOrder;
+}
 
 export interface DataFreshness {
   latest_trading_date: string | null;
@@ -72,6 +92,13 @@ export interface PriceBar {
 export interface PriceResponse {
   symbol: string;
   exchange: string;
+  company_name?: string | null;
+  sector?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  ai_summary?: string | null;
+  key_points?: string | null;
+  website_url?: string | null;
   range: RangeKey;
   start_date: string | null;
   end_date: string | null;
@@ -434,3 +461,174 @@ export const COMPONENT_LABELS: Record<string, string> = {
   market_regime: "Market Regime",
   risk_quality: "Risk Quality",
 };
+
+export interface PiotroskiTest {
+  name: string;
+  category: string;
+  passed: boolean;
+  value_display: string;
+  description: string;
+}
+
+export interface PiotroskiResult {
+  score: number;
+  max_score: number;
+  verdict: string;
+  profitability_score: number;
+  leverage_liquidity_score: number;
+  operating_efficiency_score: number;
+  tests: PiotroskiTest[];
+}
+
+export interface AltmanZResult {
+  z_score: number | null;
+  zone: string;
+  description: string;
+}
+
+export interface EarningsQualityResult {
+  cfo_to_pat: number | null;
+  cfo_to_pat_verdict: string;
+  cash_conversion_cycle_days: number | null;
+  debtor_days: number | null;
+  debtor_days_yoy_change: number | null;
+  inventory_days: number | null;
+  free_cash_flow_latest: number | null;
+}
+
+export interface DuPontResult {
+  roe_pct: number | null;
+  net_profit_margin_pct: number | null;
+  asset_turnover: number | null;
+  financial_leverage: number | null;
+  primary_driver: string;
+}
+
+export interface ForensicFlag {
+  code: string;
+  severity: string;
+  title: string;
+  detail: string;
+}
+
+export interface ForensicShieldResult {
+  red_flags_count: number;
+  is_clean: boolean;
+  verdict: string;
+  flags: ForensicFlag[];
+}
+
+export interface FinancialHealthResult {
+  has_data: boolean;
+  fiscal_year_latest: string | null;
+  fiscal_year_previous: string | null;
+  piotroski: PiotroskiResult | null;
+  altman_z: AltmanZResult | null;
+  earnings_quality: EarningsQualityResult | null;
+  dupont: DuPontResult | null;
+  forensic_shield: ForensicShieldResult | null;
+}
+
+export interface ShareholdingQuarter {
+  quarter: string;
+  promoter: number | null;
+  fii: number | null;
+  dii: number | null;
+  public: number | null;
+  government: number | null;
+  shareholders_count: number | null;
+}
+
+export interface ShareholdingFlowResult {
+  has_data: boolean;
+  latest_quarter: string | null;
+  fii_current: number | null;
+  fii_qoq_change: number | null;
+  fii_yoy_change: number | null;
+  dii_current: number | null;
+  dii_qoq_change: number | null;
+  dii_yoy_change: number | null;
+  promoter_current: number | null;
+  promoter_qoq_change: number | null;
+  promoter_yoy_change: number | null;
+  public_current: number | null;
+  shareholders_count_current: number | null;
+  shareholders_count_qoq_change: number | null;
+  institutional_holding_current: number | null;
+  institutional_holding_qoq_change: number | null;
+  smart_money_verdict: string;
+  smart_money_description: string;
+  quarters_history: ShareholdingQuarter[];
+}
+
+export interface TechnicalHealthResult {
+  has_data: boolean;
+  current_price: number | null;
+  ema_20: number | null;
+  sma_50: number | null;
+  sma_200: number | null;
+  trend_alignment_grade: string;
+  trend_summary: string;
+  price_vs_20ema_pct: number | null;
+  price_vs_50sma_pct: number | null;
+  price_vs_200sma_pct: number | null;
+  up_down_volume_ratio: number | null;
+  volume_flow_verdict: string;
+  accumulation_days_count_20d: number;
+  is_volatility_squeeze: boolean;
+  volatility_state: string;
+  high_52w: number | null;
+  low_52w: number | null;
+  pct_from_52w_high: number | null;
+  pct_from_52w_low: number | null;
+  range_position_pct: number | null;
+}
+
+export interface StockDiagnosticResponse {
+  symbol: string;
+  company_name: string;
+  financial_health: FinancialHealthResult;
+  shareholding_flow: ShareholdingFlowResult;
+  technical_health: TechnicalHealthResult;
+}
+
+export interface AiStatusResponse {
+  connected: boolean;
+  provider: string;
+  location: string;
+  model: string;
+  models: string[];
+  model_ready: boolean;
+  error?: string;
+}
+
+export interface AiChatMessage {
+  role: "user" | "assistant" | "model" | "system";
+  content: string;
+}
+
+export interface AiChatRequest {
+  message: string;
+  symbol?: string;
+  history?: AiChatMessage[];
+  model?: string;
+  temperature?: number;
+}
+
+export interface AiChatResponse {
+  symbol: string | null;
+  response: string;
+  model: string;
+  context_available: boolean;
+  context_preview: string | null;
+  raw_context: any | null;
+}
+
+export interface AiStockContextResponse {
+  symbol: string;
+  company_name: string;
+  formatted_context: string;
+  ground_truth: any;
+}
+
+

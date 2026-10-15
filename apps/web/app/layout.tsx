@@ -1,6 +1,7 @@
 import Link from "next/link";
 import "./globals.css";
 import ThemeToggle from "../components/ThemeToggle";
+import GlobalSearch from "../components/GlobalSearch";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 
 export const metadata = {
@@ -32,7 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             SignalForge
           </Link>
           <span className="tagline">Evidence-first research, not predictions.</span>
+          <GlobalSearch />
           <div className="nav-right">
+            <Link href="/ai" className="topnav-ai-link">
+              <span className="topnav-ai-icon">⚡</span>
+              <span>Ask AI</span>
+              <span className="topnav-ai-badge">Vertex Gemini</span>
+            </Link>
             <ThemeToggle />
           </div>
         </header>

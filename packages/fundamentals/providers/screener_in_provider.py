@@ -128,8 +128,8 @@ def _row_values(row: Tag) -> tuple[str, list[float | None]] | None:
     return label, [_parse_number(c.get_text()) for c in value_cells]
 
 
-def _parse_quarterly_table(section: Tag) -> list[tuple[date, float | None, float | None]]:
-    """`#quarters` section -> `[(period_end, revenue, pat), ...]`, oldest first (as rendered)."""
+def _parse_quarterly_table(section: Tag) -> list[dict[str, Any]]:
+    """`#quarters` section -> `[{"period_end": ..., "revenue": ..., "pat": ..., "ebit": ..., "eps": ..., "interest_expense": ...}, ...]`, oldest first."""
     table = section.find("table")
     if table is None:
         return []
@@ -143,32 +143,50 @@ def _parse_quarterly_table(section: Tag) -> list[tuple[date, float | None, float
         for th in header_cells
     ]
 
-    revenue_by_col: list[float | None] = [None] * len(period_ends)
-    pat_by_col: list[float | None] = [None] * len(period_ends)
+    rows: dict[str, list[float | None]] = {}
     for row in table.find("tbody").find_all("tr", recursive=False):
         parsed = _row_values(row)
         if parsed is None:
             continue
         label, values = parsed
-        if label == "Sales":
-            revenue_by_col = values
-        elif label == "Net Profit":
-            pat_by_col = values
+        rows[label] = values
 
-    results: list[tuple[date, float | None, float | None]] = []
+    results: list[dict[str, Any]] = []
     for i, period_end in enumerate(period_ends):
         if period_end is None:
             continue
-        revenue = revenue_by_col[i] * multiplier if i < len(revenue_by_col) and revenue_by_col[i] is not None else None
-        pat = pat_by_col[i] * multiplier if i < len(pat_by_col) and pat_by_col[i] is not None else None
-        if revenue is None and pat is None:
+
+        def _get_val(label: str) -> float | None:
+            vals = rows.get(label)
+            return vals[i] if vals is not None and i < len(vals) else None
+
+        rev_val = _get_val("Sales") if _get_val("Sales") is not None else _get_val("Revenue")
+        pat_val = _get_val("Net Profit")
+        ebit_val = _get_val("Operating Profit") if _get_val("Operating Profit") is not None else _get_val("Financing Profit")
+        interest_val = _get_val("Interest")
+        eps_val = _get_val("EPS in Rs")
+
+        revenue = rev_val * multiplier if rev_val is not None else None
+        pat = pat_val * multiplier if pat_val is not None else None
+        ebit = ebit_val * multiplier if ebit_val is not None else None
+        interest_expense = interest_val * multiplier if interest_val is not None else None
+        eps = eps_val if eps_val is not None else None
+
+        if revenue is None and pat is None and ebit is None:
             continue
-        results.append((period_end, revenue, pat))
+        results.append({
+            "period_end": period_end,
+            "revenue": revenue,
+            "pat": pat,
+            "ebit": ebit,
+            "eps": eps,
+            "interest_expense": interest_expense,
+        })
     return results
 
 
-def _parse_annual_profit_loss(section: Tag) -> list[tuple[date, float | None, float | None]]:
-    """`#profit-loss` section -> `[(period_end, revenue, pat), ...]` - the TTM column is skipped (period_type="FY" only)."""
+def _parse_annual_profit_loss(section: Tag) -> list[dict[str, Any]]:
+    """`#profit-loss` section -> `[{"period_end": ..., "revenue": ..., "pat": ..., "ebit": ..., "eps": ..., "interest_expense": ...}, ...]` - the TTM column is skipped (period_type="FY" only)."""
     table = section.find("table")
     if table is None:
         return []
@@ -179,25 +197,43 @@ def _parse_annual_profit_loss(section: Tag) -> list[tuple[date, float | None, fl
     header_cells = table.find("thead").find_all("th")[1:]
     period_ends = [_month_year_to_period_end(th.get_text(strip=True)) for th in header_cells]
 
-    revenue_by_col: list[float | None] = [None] * len(period_ends)
-    pat_by_col: list[float | None] = [None] * len(period_ends)
+    rows: dict[str, list[float | None]] = {}
     for row in table.find("tbody").find_all("tr", recursive=False):
         parsed = _row_values(row)
         if parsed is None:
             continue
         label, values = parsed
-        if label == "Sales":
-            revenue_by_col = values
-        elif label == "Net Profit":
-            pat_by_col = values
+        rows[label] = values
 
-    results: list[tuple[date, float | None, float | None]] = []
+    results: list[dict[str, Any]] = []
     for i, period_end in enumerate(period_ends):
         if period_end is None:
             continue
-        revenue = revenue_by_col[i] * multiplier if i < len(revenue_by_col) and revenue_by_col[i] is not None else None
-        pat = pat_by_col[i] * multiplier if i < len(pat_by_col) and pat_by_col[i] is not None else None
-        results.append((period_end, revenue, pat))
+
+        def _get_val(label: str) -> float | None:
+            vals = rows.get(label)
+            return vals[i] if vals is not None and i < len(vals) else None
+
+        rev_val = _get_val("Sales") if _get_val("Sales") is not None else _get_val("Revenue")
+        pat_val = _get_val("Net Profit")
+        ebit_val = _get_val("Operating Profit") if _get_val("Operating Profit") is not None else _get_val("Financing Profit")
+        interest_val = _get_val("Interest")
+        eps_val = _get_val("EPS in Rs")
+
+        revenue = rev_val * multiplier if rev_val is not None else None
+        pat = pat_val * multiplier if pat_val is not None else None
+        ebit = ebit_val * multiplier if ebit_val is not None else None
+        interest_expense = interest_val * multiplier if interest_val is not None else None
+        eps = eps_val if eps_val is not None else None
+
+        results.append({
+            "period_end": period_end,
+            "revenue": revenue,
+            "pat": pat,
+            "ebit": ebit,
+            "eps": eps,
+            "interest_expense": interest_expense,
+        })
     return results
 
 
@@ -251,24 +287,85 @@ def _parse_balance_sheet(section: Tag) -> dict[date, dict[str, float | None]]:
     return result
 
 
-def _fetch_soup(symbol: str, exchange: str) -> BeautifulSoup | None:
-    """Fetch the consolidated company page, falling back to standalone on 404.
+_SYNC_ENGINE = None
 
-    `None` (not an exception) for "no coverage" - unsupported exchange,
-    symbol not found on screener.in (404 on both URLs). Network/transport
-    failures and non-404 error statuses propagate, per the
-    `FundamentalDataProvider` protocol contract.
-    """
+
+def _get_sync_engine():
+    global _SYNC_ENGINE
+    if _SYNC_ENGINE is None:
+        from sqlalchemy import create_engine
+        from packages.common.config import get_settings
+        settings = get_settings()
+        sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql+psycopg2")
+        _SYNC_ENGINE = create_engine(sync_url, pool_size=10, max_overflow=20)
+    return _SYNC_ENGINE
+
+
+def _fetch_soup(symbol: str, exchange: str) -> BeautifulSoup | None:
+    """Fetch the company page HTML from raw_provider_scrapes data lake in local DB."""
     if exchange.upper() != "NSE":
         return None
 
-    with httpx.Client(follow_redirects=True) as client:
-        for path in (f"/company/{symbol.upper()}/consolidated/", f"/company/{symbol.upper()}/"):
-            resp = client.get(f"{BASE_URL}{path}", headers={"User-Agent": USER_AGENT}, timeout=REQUEST_TIMEOUT_SECONDS)
-            if resp.status_code == 404:
-                continue
-            resp.raise_for_status()
-            return BeautifulSoup(resp.text, "lxml")
+    html = None
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+        from packages.common.models import Instrument
+        from packages.fundamentals.models import RawProviderScrape
+
+        engine = _get_sync_engine()
+        with Session(engine) as session:
+            stmt = (
+                select(RawProviderScrape.html_content)
+                .join(Instrument, RawProviderScrape.instrument_id == Instrument.id)
+                .where(Instrument.symbol == symbol.upper(), RawProviderScrape.provider == "screener_in")
+                .order_by(RawProviderScrape.scraped_at.desc())
+                .limit(1)
+            )
+            html = session.execute(stmt).scalar_one_or_none()
+    except (ModuleNotFoundError, Exception):
+        # Fallback to asyncpg if psycopg2 is missing (e.g. inside Docker) or engine fails
+        try:
+            import asyncio
+            from packages.common.config import get_settings
+
+            async def _asyncpg_fetch() -> str | None:
+                import asyncpg
+                settings = get_settings()
+                raw_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+                conn = await asyncpg.connect(raw_url)
+                try:
+                    return await conn.fetchval(
+                        """
+                        SELECT r.html_content
+                        FROM raw_provider_scrapes r
+                        JOIN instruments i ON r.instrument_id = i.id
+                        WHERE i.symbol = $1 AND r.provider = 'screener_in'
+                        ORDER BY r.scraped_at DESC
+                        LIMIT 1
+                        """,
+                        symbol.upper(),
+                    )
+                finally:
+                    await conn.close()
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    html = pool.submit(lambda: asyncio.run(_asyncpg_fetch())).result()
+            else:
+                html = asyncio.run(_asyncpg_fetch())
+        except Exception as inner_exc:
+            logger.error("Failed to fetch raw scrape for %s: %s", symbol, inner_exc)
+            html = None
+
+    if html:
+        return BeautifulSoup(html, "lxml")
     return None
 
 
@@ -301,9 +398,10 @@ class ScreenerInFundamentalProvider:
 
         now = datetime.now(UTC)
         snapshots: list[FundamentalSnapshotData] = []
-        for period_end, revenue, pat in pl_rows:
+        for pl in pl_rows:
+            period_end = pl["period_end"]
             bs = bs_by_period.get(period_end, {})
-            if revenue is None and pat is None and not any(bs.values()):
+            if pl.get("revenue") is None and pl.get("pat") is None and not any(bs.values()):
                 continue
             snapshots.append(
                 FundamentalSnapshotData(
@@ -311,11 +409,11 @@ class ScreenerInFundamentalProvider:
                     exchange=exchange.upper(),
                     period_end=period_end,
                     period_type="FY",
-                    revenue=revenue,
-                    ebitda=None,
-                    ebit=None,
-                    pat=pat,
-                    eps=None,
+                    revenue=pl.get("revenue"),
+                    ebitda=pl.get("ebit"),
+                    ebit=pl.get("ebit"),
+                    pat=pl.get("pat"),
+                    eps=pl.get("eps"),
                     operating_cash_flow=None,
                     free_cash_flow=None,
                     total_assets=bs.get("total_assets"),
@@ -325,7 +423,7 @@ class ScreenerInFundamentalProvider:
                     equity=bs.get("equity"),
                     shares_outstanding=None,
                     dividend_yield=None,
-                    interest_expense=None,
+                    interest_expense=pl.get("interest_expense"),
                     current_assets=None,
                     current_liabilities=None,
                     source=SOURCE_NAME,
@@ -352,13 +450,13 @@ class ScreenerInFundamentalProvider:
             FundamentalSnapshotData(
                 symbol=symbol.upper(),
                 exchange=exchange.upper(),
-                period_end=period_end,
+                period_end=row["period_end"],
                 period_type="Q",
-                revenue=revenue,
-                ebitda=None,
-                ebit=None,
-                pat=pat,
-                eps=None,
+                revenue=row.get("revenue"),
+                ebitda=row.get("ebit"),
+                ebit=row.get("ebit"),
+                pat=row.get("pat"),
+                eps=row.get("eps"),
                 operating_cash_flow=None,
                 free_cash_flow=None,
                 total_assets=None,
@@ -368,13 +466,13 @@ class ScreenerInFundamentalProvider:
                 equity=None,
                 shares_outstanding=None,
                 dividend_yield=None,
-                interest_expense=None,
+                interest_expense=row.get("interest_expense"),
                 current_assets=None,
                 current_liabilities=None,
                 source=SOURCE_NAME,
                 source_timestamp=now,
             )
-            for period_end, revenue, pat in _parse_quarterly_table(quarters_section)
+            for row in _parse_quarterly_table(quarters_section)
         ]
 
 

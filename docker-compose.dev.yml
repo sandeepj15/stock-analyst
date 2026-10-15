@@ -1,0 +1,20 @@
+# Development override for live source editing and reloading.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+services:
+  api:
+    volumes:
+      - .:/app
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    volumes:
+      - .:/app
+
+  web:
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+
+volumes:
+  web_node_modules:

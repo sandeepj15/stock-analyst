@@ -9,7 +9,6 @@ const COMPONENT_ORDER = [
   "momentum",
   "fundamentals",
   "valuation",
-  "sector_relative_strength",
   "market_regime",
   "risk_quality",
 ];

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from apps.api.deps import resolve_instrument_or_404
 from packages.common import cache
 from packages.common.db import get_db_session
+from packages.scoring.bands import score_band
 from packages.scoring.engine import (
     SCORE_CACHE_TTL_SECONDS,
     BullBearEntryOut,
@@ -25,7 +26,7 @@ from packages.scoring.engine import (
     score_cache_key,
     to_score_response_payload,
 )
-from packages.scoring.models import EvidenceItem
+from packages.scoring.models import EvidenceItem, ResearchScore
 
 router = APIRouter(prefix="/api/v1/stocks", tags=["scoring"])
 
@@ -101,6 +102,32 @@ async def get_score(
     cached = await cache.get_json(cache_key)
     if cached is not None:
         return ScoreResponse(**cached, cache_hit=True)
+
+    # Fast path: check if we have a persisted score in the database first
+    stmt = (
+        select(ResearchScore)
+        .where(ResearchScore.instrument_id == instrument.id)
+        .order_by(ResearchScore.computed_at.desc())
+        .limit(1)
+    )
+    latest_row = (await session.execute(stmt)).scalar_one_or_none()
+    if latest_row is not None:
+        payload = {
+            "instrument_id": str(latest_row.instrument_id),
+            "symbol": instrument.symbol,
+            "exchange": instrument.exchange,
+            "as_of_date": latest_row.computed_at.date().isoformat(),
+            "computed_at": latest_row.computed_at.isoformat(),
+            "score": latest_row.score,
+            "confidence": latest_row.confidence,
+            "band": score_band(latest_row.score),
+            "methodology_version": latest_row.methodology_version,
+            "components": latest_row.components,
+            "bull_case": latest_row.bull_case,
+            "bear_case": latest_row.bear_case,
+        }
+        await cache.set_json(cache_key, payload, SCORE_CACHE_TTL_SECONDS)
+        return ScoreResponse(**payload, cache_hit=False)
 
     try:
         result = await compute_research_score(session, instrument)

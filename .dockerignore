@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+node_modules
+apps/web/node_modules
+apps/web/.next
+.env
+kronos_weights/
+.pytest_cache/
+tests/
+models/

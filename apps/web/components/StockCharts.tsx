@@ -15,12 +15,14 @@ import {
   createChart,
 } from "lightweight-charts";
 import type { IndicatorSeries, PriceBar } from "../lib/types";
+import type { ForecastResponse } from "../lib/api";
 import { CHART_PALETTES, type ChartPalette } from "../lib/theme";
 import { useTheme } from "../lib/useTheme";
 
 interface Props {
   bars: PriceBar[];
   series: IndicatorSeries;
+  mlForecast?: ForecastResponse | null;
 }
 
 type OverlayKey = "ema_20" | "ema_50" | "ema_200";
@@ -63,11 +65,12 @@ interface Instances {
   macdSignal: ISeriesApi<"Line">;
   macdHist: ISeriesApi<"Histogram">;
   emaSeries: Record<OverlayKey, ISeriesApi<"Line">>;
+  mlForecastSeries?: ISeriesApi<"Line">;
   volumeUpDown: boolean[]; // per-bar: true if that bar closed up vs. previous bar
   macdHistSign: (boolean | null)[]; // per-point: true if >= 0, null if no value
 }
 
-export default function StockCharts({ bars, series }: Props) {
+export default function StockCharts({ bars, series, mlForecast }: Props) {
   const [theme] = useTheme();
   const candleRef = useRef<HTMLDivElement | null>(null);
   const rsiRef = useRef<HTMLDivElement | null>(null);
@@ -79,6 +82,7 @@ export default function StockCharts({ bars, series }: Props) {
     ema_50: true,
     ema_200: false,
   });
+  const [showForecast, setShowForecast] = useState<boolean>(false);
 
   // --- Build (and tear down) all three chart instances together, wired
   // for synced pan/zoom + synced crosshair. Only re-runs when the
@@ -162,6 +166,21 @@ export default function StockCharts({ bars, series }: Props) {
       emaSeries[key] = line;
     });
 
+    let mlForecastSeries: ISeriesApi<"Line"> | undefined;
+    if (mlForecast) {
+      mlForecastSeries = candleChart.addLineSeries({
+        color: "#3b82f6",
+        lineStyle: 2, // Dashed
+        lineWidth: 2,
+        visible: showForecast,
+      });
+      const forecastData = mlForecast.trajectory.map((pt) => ({
+        time: toTimestamp(pt.date),
+        value: pt.close
+      })).filter(pt => !isNaN(pt.time as number) && pt.value !== null);
+      mlForecastSeries.setData(forecastData as LineData[]);
+    }
+
     const rsiSeries = rsiChart.addLineSeries({ color: palette.warn, lineWidth: 2, priceLineVisible: false });
     const rsiLineData = toLineData(series.dates, series.rsi_14);
     rsiSeries.setData(rsiLineData);
@@ -196,6 +215,7 @@ export default function StockCharts({ bars, series }: Props) {
       macdSignal,
       macdHist,
       emaSeries,
+      mlForecastSeries,
       volumeUpDown,
       macdHistSign,
     };
@@ -269,7 +289,7 @@ export default function StockCharts({ bars, series }: Props) {
     // Theme changes are handled by the effect below without rebuilding -
     // `theme`'s value at build time is captured once here intentionally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, series]);
+  }, [bars, series, mlForecast]);
 
   // --- Re-theme live, in place, without tearing down/rebuilding the
   // charts (which would also reset the user's current zoom/pan/crosshair
@@ -323,6 +343,14 @@ export default function StockCharts({ bars, series }: Props) {
     });
   }
 
+  function toggleForecast() {
+    setShowForecast((prev) => {
+      const next = !prev;
+      instancesRef.current?.mlForecastSeries?.applyOptions({ visible: next });
+      return next;
+    });
+  }
+
   const emaColorStyle = (key: OverlayKey) => {
     const palette = CHART_PALETTES[theme];
     return key === "ema_20" ? palette.warn : key === "ema_50" ? palette.accent : palette.purple;
@@ -343,6 +371,12 @@ export default function StockCharts({ bars, series }: Props) {
           <input type="checkbox" checked={overlays.ema_200} onChange={() => toggleOverlay("ema_200")} />
           <span style={{ color: emaColorStyle("ema_200") }}>EMA 200</span>
         </label>
+        {mlForecast && (
+          <label style={{ marginLeft: "1rem" }}>
+            <input type="checkbox" checked={showForecast} onChange={toggleForecast} />
+            <span style={{ color: "#3b82f6" }}>ML Projection (Kronos)</span>
+          </label>
+        )}
       </div>
       <div className="chart-frame">
         <div className="chart-pane">

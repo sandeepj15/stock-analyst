@@ -1,22 +1,24 @@
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: signalforge
-      POSTGRES_PASSWORD: signalforge
-      POSTGRES_DB: signalforge
+      POSTGRES_USER: ${POSTGRES_USER:-signalforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signalforge}
+      POSTGRES_DB: ${POSTGRES_DB:-signalforge}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U signalforge -d signalforge"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-signalforge} -d ${POSTGRES_DB:-signalforge}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -29,37 +31,51 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["/app/scripts/docker-entrypoint.sh"]
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@postgres:5432/signalforge
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://signalforge:signalforge@postgres:5432/signalforge}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yfinance_dev}
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health/db || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   worker:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@postgres:5432/signalforge
-      REDIS_URL: redis://redis:6379/0
-    volumes:
-      - .:/app
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://signalforge:signalforge@postgres:5432/signalforge}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yfinance_dev}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
     command: ["arq", "apps.worker.settings.WorkerSettings"]
 
@@ -67,16 +83,16 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       API_URL: http://api:8000
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3000:3000"
-    volumes:
-      - ./apps/web:/app
-      - web_node_modules:/app/node_modules
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
-  web_node_modules:

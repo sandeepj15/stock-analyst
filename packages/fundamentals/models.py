@@ -88,3 +88,37 @@ class FundamentalSnapshot(Base):
     # gap is always inspectable, never silently blurred into `source`.
     field_sources: Mapped[dict[str, str] | None] = mapped_column(JSONB, nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RawProviderScrape(Base):
+    """Raw HTML backup ('Data Lake Bronze Layer') for a provider page.
+    Allows re-parsing historical pages without re-fetching from the internet.
+    """
+    __tablename__ = "raw_provider_scrapes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instrument_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    html_content: Mapped[str] = mapped_column(String, nullable=False)
+    scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+
+
+class StructuredProviderData(Base):
+    """Structured JSONB extraction of all tables from a provider page.
+    ('Data Lake Silver Layer')
+    """
+    __tablename__ = "structured_provider_data"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    instrument_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("instruments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    parsed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    source_scrape_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("raw_provider_scrapes.id", ondelete="SET NULL"), nullable=True
+    )

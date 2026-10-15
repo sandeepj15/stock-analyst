@@ -40,3 +40,12 @@ infra/docker/data/
 # Scratch and DB
 scratch*.py
 *.sqlite3
+
+# Secrets
+secrets/
+*.key.json
+
+# ML Models and weights
+packages/kronos/weights/
+packages/kronos/data/*.csv
+*.safetensors

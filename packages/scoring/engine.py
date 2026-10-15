@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.common.models import Instrument
 from packages.indicators import compute_indicator_snapshot
 from packages.market_data.history import load_ohlcv_dataframe
+from packages.market_data.relative_strength import UniverseSectorRS
 from packages.scoring.aggregate import aggregate_components
 from packages.scoring.bands import score_band
 from packages.scoring.bull_bear import build_bull_bear_case
@@ -140,6 +141,8 @@ async def compute_research_score(
     session: AsyncSession,
     instrument: Instrument,
     precomputed_universe_valuation: UniverseValuation | None = None,
+    precomputed_universe_sector_rs: UniverseSectorRS | None = None,
+    precomputed_regime_row: Any | None = None,
 ) -> ResearchScoreResult:
     """Compute and persist one instrument's Research Strength v1 score.
 
@@ -151,6 +154,12 @@ async def compute_research_score(
     `/score` endpoint's behavior (that endpoint simply omits this
     argument and gets the same methodology via a short-TTL cache
     instead of a precomputed value).
+
+    `precomputed_universe_sector_rs`: optional precomputed sector returns
+    for batch callers, eliminating O(N_sector^2) nested OHLCV peer queries.
+
+    `precomputed_regime_row`: optional precomputed regime row for batch callers,
+    avoiding redundant database queries across 1,510 stocks.
     """
     full_df = await load_ohlcv_dataframe(session, instrument.id)
     if full_df.empty:
@@ -179,8 +188,20 @@ async def compute_research_score(
         now,
         precomputed_universe_valuation=precomputed_universe_valuation,
     )
-    sector_result, sector_pairs = await score_sector_relative_strength(session, instrument, evidence_builder, now)
-    regime_result, regime_pairs = await score_market_regime(session, evidence_builder, now)
+    sector_result, sector_pairs = await score_sector_relative_strength(
+        session,
+        instrument,
+        evidence_builder,
+        now,
+        stock_df=full_df,
+        precomputed_universe_sector_rs=precomputed_universe_sector_rs,
+    )
+    regime_result, regime_pairs = await score_market_regime(
+        session,
+        evidence_builder,
+        now,
+        precomputed_regime_row=precomputed_regime_row,
+    )
 
     results_by_name = {
         "technical_structure": technical_result,

@@ -33,7 +33,7 @@ import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from packages.analyst_estimates.factory import get_analyst_estimate_provider
 from packages.analyst_estimates.ingestion import (
@@ -51,6 +51,8 @@ from packages.fundamentals.factory import get_fundamental_provider, get_quarterl
 from packages.fundamentals.ingestion import sync_fundamentals as sync_fundamentals_for_instrument
 from packages.market_data.factory import get_provider
 from packages.market_data.ingestion import DEFAULT_INGESTION_CONCURRENCY, ingest_daily_bars_for_instruments
+from packages.market_data.relative_strength import compute_universe_sector_relative_strength
+from packages.momentum.models import MomentumScan as MomentumScanRow
 from packages.momentum.rs_rank import percentile_rank_universe
 from packages.momentum.service import (
     MOMENTUM_SCAN_CACHE_TTL_SECONDS,
@@ -59,7 +61,7 @@ from packages.momentum.service import (
     momentum_scan_cache_key,
     to_momentum_scan_cache_payload,
 )
-from packages.regime.service import compute_and_store_regime
+from packages.regime.service import compute_and_store_regime, get_latest_regime
 from packages.scoring.components import compute_universe_valuation_values
 from packages.scoring.engine import (
     SCORE_CACHE_TTL_SECONDS,
@@ -67,6 +69,7 @@ from packages.scoring.engine import (
     score_cache_key,
     to_score_response_payload,
 )
+from packages.scoring.models import ResearchScore as ResearchScoreRow
 
 logger = logging.getLogger(__name__)
 
@@ -293,16 +296,22 @@ async def sync_analyst_estimates_job(ctx: dict[str, Any], instrument_ids: list[s
                     
                     batch_results = await sync_analyst_estimates_batch(provider, task_session, fresh_instruments)
                     
+                    # Bulk query saved estimates for cache write-through in a single query
+                    saved_rows = (await task_session.execute(
+                        select(AnalystEstimate).where(AnalystEstimate.instrument_id.in_(ids))
+                    )).scalars().all()
+                    saved_map = {row.instrument_id: row for row in saved_rows}
+
                     for res in batch_results:
+                        inst = next((i for i in fresh_instruments if i.symbol == res.symbol), None)
+                        if not inst:
+                            continue
                         if not res.has_coverage:
                             results["no_coverage"].append({"symbol": res.symbol})
-                            inst = next(i for i in fresh_instruments if i.symbol == res.symbol)
                             await cache.delete(analyst_rating_cache_key(inst.id))
                         else:
                             results["synced"].append({"symbol": res.symbol, "source": res.source})
-                            inst = next(i for i in fresh_instruments if i.symbol == res.symbol)
-                            stmt2 = select(AnalystEstimate).where(AnalystEstimate.instrument_id == inst.id)
-                            row = (await task_session.execute(stmt2)).scalar_one_or_none()
+                            row = saved_map.get(inst.id)
                             if row:
                                 payload = to_analyst_estimate_cache_payload(row)
                                 await cache.set_json(analyst_rating_cache_key(inst.id), payload, ANALYST_RATING_CACHE_TTL_SECONDS)
@@ -311,8 +320,8 @@ async def sync_analyst_estimates_job(ctx: dict[str, Any], instrument_ids: list[s
                 for t in batch_targets:
                     results["failed"].append({"symbol": t[1], "error": str(exc)})
 
-    # Chunk into sizes of 100 to maximize TV batch efficiency (750 / 100 = ~8 chunks)
-    batch_size = 100
+    # Chunk into sizes of 300 for fast bulk database and TV processing
+    batch_size = 300
     chunks = [targets[i:i + batch_size] for i in range(0, len(targets), batch_size)]
     tasks = [_sync_batch(chunk) for chunk in chunks]
     await asyncio.gather(*tasks)
@@ -392,35 +401,61 @@ async def compute_all_scores_job(ctx: dict[str, Any], instrument_ids: list[str] 
             stmt = stmt.where(Instrument.id.in_(instrument_ids))
         targets = (await session.execute(stmt)).all()
 
-        # Computed once for the whole batch (see docstring above) - every
-        # instrument below reuses this same dict instead of triggering its
-        # own full universe rescan.
-        universe_valuation = await compute_universe_valuation_values(session, datetime.now(UTC))
+        # Resumable / Idempotent skip: if already scored today, skip!
+        # Allows interrupted batch runs (e.g. laptop sleep) to immediately resume.
+        today = datetime.now(UTC).date()
+        scored_stmt = (
+            select(ResearchScoreRow.instrument_id)
+            .where(func.date(ResearchScoreRow.computed_at) == today)
+            .distinct()
+        )
+        scored_ids = set((await session.execute(scored_stmt)).scalars().all())
+        if scored_ids and not instrument_ids:
+            initial_count = len(targets)
+            targets = [t for t in targets if t[0] not in scored_ids]
+            logger.info(
+                "compute_all_scores_job: skipping already-scored instruments for today",
+                extra={"already_scored": len(scored_ids), "remaining": len(targets), "total": initial_count},
+            )
 
-    for instrument_id, symbol, exchange in targets:
-        try:
-            async with session_scope() as session:
-                instrument = await session.get(Instrument, instrument_id)
-                if instrument is None:
-                    raise ValueError(f"instrument {instrument_id} no longer exists")
-                result = await compute_research_score(
-                    session, instrument, precomputed_universe_valuation=universe_valuation
+        if not targets:
+            logger.info("compute_all_scores_job: all instruments already scored for today, nothing to do")
+            return results
+
+        # Computed once for the whole batch - eliminates O(N^2) rescan and 300,000 DB queries
+        universe_valuation = await compute_universe_valuation_values(session, datetime.now(UTC))
+        universe_sector_rs = await compute_universe_sector_relative_strength(session)
+        latest_regime = await get_latest_regime(session)
+
+    semaphore = asyncio.Semaphore(16)
+
+    async def _score_one(instrument_id: Any, symbol: str, exchange: str) -> None:
+        async with semaphore:
+            try:
+                async with session_scope() as session:
+                    instrument = await session.get(Instrument, instrument_id)
+                    if instrument is None:
+                        raise ValueError(f"instrument {instrument_id} no longer exists")
+                    result = await compute_research_score(
+                        session,
+                        instrument,
+                        precomputed_universe_valuation=universe_valuation,
+                        precomputed_universe_sector_rs=universe_sector_rs,
+                        precomputed_regime_row=latest_regime,
+                    )
+                # Write-through cache population (SPEC.md section 59)
+                await cache.set_json(
+                    score_cache_key(instrument_id), to_score_response_payload(result), SCORE_CACHE_TTL_SECONDS
                 )
-            # Write-through cache population (SPEC.md section 59): this is
-            # the *primary* way the Redis score cache gets populated - see
-            # packages/scoring/engine.py's "Redis caching" comment. The
-            # on-demand `/score` endpoint's own cache-miss path is only a
-            # safety net for instruments this batch run hasn't covered yet.
-            await cache.set_json(
-                score_cache_key(instrument_id), to_score_response_payload(result), SCORE_CACHE_TTL_SECONDS
-            )
-            results["scored"].append({"symbol": symbol, "score": result.score, "band": result.band})
-        except Exception as exc:
-            logger.error(
-                "compute_all_scores_job: instrument failed, continuing with next",
-                extra={"symbol": symbol, "exchange": exchange, "error": str(exc)},
-            )
-            results["failed"].append({"symbol": symbol, "error": str(exc)})
+                results["scored"].append({"symbol": symbol, "score": result.score, "band": result.band})
+            except Exception as exc:
+                logger.error(
+                    "compute_all_scores_job: instrument failed, continuing with next",
+                    extra={"symbol": symbol, "exchange": exchange, "error": str(exc)},
+                )
+                results["failed"].append({"symbol": symbol, "error": str(exc)})
+
+    await asyncio.gather(*[_score_one(iid, sym, exch) for iid, sym, exch in targets])
 
     logger.info(
         "compute_all_scores_job completed",
@@ -460,32 +495,57 @@ async def compute_all_momentum_scans_job(ctx: dict[str, Any], instrument_ids: li
             stmt = stmt.where(Instrument.id.in_(instrument_ids))
         targets = (await session.execute(stmt)).all()
 
+        # Resumable skip: if already scanned today, skip!
+        today = datetime.now(UTC).date()
+        scanned_stmt = (
+            select(MomentumScanRow.instrument_id)
+            .where(func.date(MomentumScanRow.computed_at) == today)
+            .distinct()
+        )
+        scanned_ids = set((await session.execute(scanned_stmt)).scalars().all())
+        if scanned_ids and not instrument_ids:
+            initial_count = len(targets)
+            targets = [t for t in targets if t[0] not in scanned_ids]
+            logger.info(
+                "compute_all_momentum_scans_job: skipping already-scanned instruments for today",
+                extra={"already_scanned": len(scanned_ids), "remaining": len(targets), "total": initial_count},
+            )
+
+        if not targets:
+            logger.info("compute_all_momentum_scans_job: all instruments already scanned for today, nothing to do")
+            return results
+
         # Computed + ranked exactly once for the whole batch (see docstring above).
         raw_scores = await compute_universe_raw_scores(session)
         rs_ranks = percentile_rank_universe({str(k): v for k, v in raw_scores.items()})
 
-    for instrument_id, symbol, exchange in targets:
-        try:
-            precomputed_rs_rank = rs_ranks.get(str(instrument_id))
-            async with session_scope() as session:
-                instrument = await session.get(Instrument, instrument_id)
-                if instrument is None:
-                    raise ValueError(f"instrument {instrument_id} no longer exists")
-                result = await compute_momentum_scan(
-                    session, instrument, precomputed_rs_rank=precomputed_rs_rank
+    semaphore = asyncio.Semaphore(16)
+
+    async def _scan_one(instrument_id: Any, symbol: str, exchange: str) -> None:
+        async with semaphore:
+            try:
+                precomputed_rs_rank = rs_ranks.get(str(instrument_id))
+                async with session_scope() as session:
+                    instrument = await session.get(Instrument, instrument_id)
+                    if instrument is None:
+                        raise ValueError(f"instrument {instrument_id} no longer exists")
+                    result = await compute_momentum_scan(
+                        session, instrument, precomputed_rs_rank=precomputed_rs_rank
+                    )
+                await cache.set_json(
+                    momentum_scan_cache_key(instrument_id, result.sma200_trend_lookback_days),
+                    to_momentum_scan_cache_payload(result),
+                    MOMENTUM_SCAN_CACHE_TTL_SECONDS,
                 )
-            await cache.set_json(
-                momentum_scan_cache_key(instrument_id, result.sma200_trend_lookback_days),
-                to_momentum_scan_cache_payload(result),
-                MOMENTUM_SCAN_CACHE_TTL_SECONDS,
-            )
-            results["scanned"].append({"symbol": symbol, "passed": result.passed, "rs_rank": result.rs_rank})
-        except Exception as exc:
-            logger.error(
-                "compute_all_momentum_scans_job: instrument failed, continuing with next",
-                extra={"symbol": symbol, "exchange": exchange, "error": str(exc)},
-            )
-            results["failed"].append({"symbol": symbol, "error": str(exc)})
+                results["scanned"].append({"symbol": symbol, "passed": result.passed, "rs_rank": result.rs_rank})
+            except Exception as exc:
+                logger.error(
+                    "compute_all_momentum_scans_job: instrument failed, continuing with next",
+                    extra={"symbol": symbol, "exchange": exchange, "error": str(exc)},
+                )
+                results["failed"].append({"symbol": symbol, "error": str(exc)})
+
+    await asyncio.gather(*[_scan_one(iid, sym, exch) for iid, sym, exch in targets])
 
     logger.info(
         "compute_all_momentum_scans_job completed",
@@ -519,6 +579,195 @@ def _summarize_step_result(result: Any) -> dict[str, Any]:
         return result
     return {"result": repr(result)}
 
+
+
+
+async def evaluate_ml_forecasts_job(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate historical ML forecasts against actual realized prices."""
+    logger.info("[evaluate_ml_forecasts_job] Starting forecast evaluation.")
+    import pandas as pd
+    from sqlalchemy import select, update, text
+    from packages.common.db import session_scope
+    from packages.common.models import Instrument
+    from packages.market_data.models import OHLCVDaily
+    
+    evaluated_count = 0
+    
+    async with session_scope() as db:
+        # Find unevaluated forecasts where the horizon has passed
+        # i.e. as_of_date + horizon_days <= today
+        query = text("""
+            SELECT id, instrument_id, as_of_date, horizon_days, trajectory 
+            FROM ml_forecasts 
+            WHERE evaluated_at IS NULL 
+              AND as_of_date + horizon_days <= CURRENT_DATE
+        """)
+        
+        result = await db.execute(query)
+        forecasts = result.all()
+        
+        if not forecasts:
+            return {"status": "completed", "evaluated_count": 0}
+            
+        for f in forecasts:
+            f_id, inst_id, as_of, horizon, traj = f
+            
+            # Fetch actual prices for the trajectory dates
+            # Note: as_of is a Date object. traj contains dates.
+            # We want prices strictly > as_of_date
+            prices_query = select(OHLCVDaily.trading_date, OHLCVDaily.close, OHLCVDaily.volume).where(
+                OHLCVDaily.instrument_id == inst_id,
+                OHLCVDaily.trading_date > as_of
+            ).order_by(OHLCVDaily.trading_date.asc()).limit(horizon)
+            
+            prices_res = await db.execute(prices_query)
+            actual_rows = prices_res.all()
+            
+            if not actual_rows or len(actual_rows) < horizon:
+                continue # Wait until we have the full horizon of actual data
+                
+            actual_traj = []
+            for r in actual_rows:
+                actual_traj.append({
+                    "date": r.trading_date.strftime("%Y-%m-%d"),
+                    "close": float(r.close),
+                    "volume": float(r.volume)
+                })
+                
+            # Compute metrics
+            # 1. MAPE
+            actual_closes = [pt['close'] for pt in actual_traj]
+            predicted_closes = [pt['close'] for pt in traj]
+            
+            if len(actual_closes) == len(predicted_closes):
+                errors = [abs((a - p) / a) for a, p in zip(actual_closes, predicted_closes) if a != 0]
+                mape = sum(errors) / len(errors) if errors else 0.0
+            else:
+                mape = None
+                
+            # 2. Directional Accuracy (Did it predict the trend from day 0 to day N correctly?)
+            # Need the day 0 close (as_of_date close). We don't have it easily here, 
+            # so we'll approximate trend from first predicted point to last predicted point,
+            # compared to first actual to last actual.
+            pred_trend = predicted_closes[-1] - predicted_closes[0]
+            act_trend = actual_closes[-1] - actual_closes[0]
+            directional_accuracy = (pred_trend >= 0) == (act_trend >= 0)
+            
+            # Update the forecast record
+            update_stmt = text("""
+                UPDATE ml_forecasts 
+                SET actual_trajectory = :actual_traj,
+                    mape = :mape,
+                    directional_accuracy = :directional_accuracy,
+                    evaluated_at = now()
+                WHERE id = :f_id
+            """)
+            import json
+            await db.execute(update_stmt, {
+                "actual_traj": json.dumps(actual_traj),
+                "mape": mape,
+                "directional_accuracy": directional_accuracy,
+                "f_id": f_id
+            })
+            evaluated_count += 1
+            
+        await db.commit()
+            
+    logger.info(f"[evaluate_ml_forecasts_job] Finished. Evaluated: {evaluated_count}")
+    return {"status": "completed", "evaluated_count": evaluated_count}
+
+async def generate_ml_forecasts_job(ctx: dict[str, Any], instrument_ids: list[str] | None = None) -> dict[str, Any]:
+    """Generate Kronos ML 5-day forecasts for the provided instruments (Phase 2)."""
+    logger.info(f"[generate_ml_forecasts_job] Starting for {len(instrument_ids) if instrument_ids else 'all'} instruments.")
+    import pandas as pd
+    from sqlalchemy import select, insert
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from packages.common.db import session_scope
+    from packages.common.models import Instrument
+    from packages.market_data.models import OHLCVDaily
+    from packages.kronos.service import KronosService
+    
+    success_count = 0
+    failure_count = 0
+    
+    async with session_scope() as db:
+        query = select(Instrument.id, Instrument.symbol)
+        if instrument_ids:
+            query = query.where(Instrument.id.in_(instrument_ids))
+        query = query.where(Instrument.active == True)
+        instruments_result = await db.execute(query)
+        targets = [(str(row.id), str(row.symbol)) for row in instruments_result]
+        
+    if not targets:
+        return {"status": "completed", "success": 0, "failed": 0}
+        
+    # Initialize the predictor once for the batch
+    try:
+        predictor_service = KronosService(use_small_model=True)
+    except Exception as e:
+        logger.error(f"[generate_ml_forecasts_job] Failed to initialize KronosService: {e}")
+        return {"status": "failed", "error": str(e)}
+
+    for inst_id, symbol in targets:
+        try:
+            async with session_scope() as db:
+                prices_query = select(
+                    OHLCVDaily.trading_date.label('timestamps'),
+                    OHLCVDaily.open, OHLCVDaily.high, OHLCVDaily.low, OHLCVDaily.close, OHLCVDaily.volume
+                ).where(OHLCVDaily.instrument_id == inst_id).order_by(OHLCVDaily.trading_date.asc()).limit(512)
+                
+                prices_res = await db.execute(prices_query)
+                rows = prices_res.all()
+                if not rows or len(rows) < 50:
+                    continue
+                    
+                ohlcv_df = pd.DataFrame([dict(r._mapping) for r in rows])
+                
+                # Predict next 5 days
+                forecast_df = predictor_service.predict_forward(ohlcv_df, pred_len=5)
+                if forecast_df is None or forecast_df.empty:
+                    continue
+                
+                # Convert forecast_df to JSON
+                # Columns: open, high, low, close, volume, timestamps
+                trajectory = []
+                for _, row in forecast_df.iterrows():
+                    trajectory.append({
+                        "date": row['timestamps'].strftime("%Y-%m-%d"),
+                        "close": float(row['close']),
+                        "volume": float(row.get('volume', 0.0))
+                    })
+                
+                as_of_date = rows[-1]._mapping['timestamps']
+                
+                from packages.common.models import MLForecast
+                import uuid
+                stmt = pg_insert(MLForecast).values(
+                    id=uuid.uuid4(),
+                    instrument_id=inst_id,
+                    model_name="Kronos-small",
+                    as_of_date=as_of_date,
+                    horizon_days=5,
+                    trajectory=trajectory
+                ).on_conflict_do_update(
+                    index_elements=['instrument_id', 'model_name', 'as_of_date'],
+                    set_={"trajectory": trajectory, "created_at": pd.Timestamp.now(tz="UTC")}
+                )
+                
+                await db.execute(stmt)
+                await db.commit()
+                success_count += 1
+                
+        except Exception as e:
+            logger.error(f"[generate_ml_forecasts_job] Failed forecast for {symbol}: {e}")
+            failure_count += 1
+            
+    logger.info(f"[generate_ml_forecasts_job] Finished. Success: {success_count}, Failed: {failure_count}")
+    return {
+        "status": "completed",
+        "success_count": success_count,
+        "failure_count": failure_count
+    }
 
 async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     """Daily, automatic, Mon-Fri-only, after-market-close refresh pipeline.
@@ -611,6 +860,7 @@ async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     await _run_step("market_regime", sync_market_regime(ctx))
     await _run_step("research_scores", compute_all_scores_job(ctx))
     await _run_step("momentum_scans", compute_all_momentum_scans_job(ctx))
+    await _run_step("analyst_estimates", sync_analyst_estimates_job(ctx))
 
     cache_step_started = time.monotonic()
     try:
@@ -637,3 +887,54 @@ async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     }
     logger.info("daily_market_close_sync completed", extra=summary)
     return summary
+
+
+async def check_missed_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Catch-up job for laptop sleep / reboot / missed cron runs.
+
+    Runs on worker startup and periodically (every 15 minutes). Checks if:
+    1. Today is a weekday (Monday-Friday).
+    2. Local time in India is after market close (>= 18:30 IST / 13:00 UTC).
+    3. Today's research scores are incomplete (< 95% of active equity universe).
+
+    If incomplete, automatically triggers `daily_market_close_sync` to catch up.
+    If already complete, exits in a few milliseconds without doing redundant work.
+    """
+    from zoneinfo import ZoneInfo
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata"))
+
+    # Only run after market close on weekdays (Mon-Fri)
+    if now_ist.weekday() >= 5:
+        return {"action": "skipped", "reason": "weekend"}
+
+    # Market closes at 15:30 IST; daily sync is scheduled for 18:30 IST
+    if now_ist.hour < 18 or (now_ist.hour == 18 and now_ist.minute < 30):
+        return {"action": "skipped", "reason": "market_not_closed_yet"}
+
+    today = now_ist.date()
+    async with session_scope() as session:
+        total_active = await session.scalar(
+            select(func.count(Instrument.id)).where(
+                Instrument.active.is_(True), Instrument.instrument_type == "EQUITY"
+            )
+        ) or 0
+        scored_today = await session.scalar(
+            select(func.count(func.distinct(ResearchScoreRow.instrument_id))).where(
+                func.date(ResearchScoreRow.computed_at) == today
+            )
+        ) or 0
+
+    if total_active > 0 and scored_today >= int(total_active * 0.95):
+        logger.info(
+            "check_missed_market_close_sync: today's sync already complete",
+            extra={"scored_today": scored_today, "total_active": total_active, "date": str(today)},
+        )
+        return {"action": "skipped", "reason": "already_complete", "scored_today": scored_today, "total_active": total_active}
+
+    logger.warning(
+        "check_missed_market_close_sync: today's market close sync is missing or incomplete, triggering catch-up",
+        extra={"scored_today": scored_today, "total_active": total_active, "date": str(today)},
+    )
+    result = await daily_market_close_sync(ctx)
+    return {"action": "triggered_catchup", "result": result}
+

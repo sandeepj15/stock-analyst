@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routes import analyst, fundamentals, health, instruments, market, momentum, scoring, stocks
+from apps.api.routes import ai, analyst, fundamentals, health, instruments, market, momentum, scoring, stocks
 from packages.common.config import get_settings
 from packages.common.logging import configure_logging
 
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(market.router)
     app.include_router(scoring.router)
     app.include_router(momentum.router)
+    app.include_router(ai.router)
 
     return app
 
