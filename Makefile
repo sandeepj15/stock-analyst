@@ -27,6 +27,24 @@ seed-fundamentals:
 seed-fundamentals-fallback:
 	docker compose exec -e FUNDAMENTAL_PROVIDER=yfinance_tradingview_fallback api python scripts/seed_fundamentals.py
 
+expand-universe:
+	docker compose exec worker python scripts/expand_universe.py
+
+scrape-screener:
+	docker compose exec worker python scripts/scrape_raw_screener.py
+
+parse-screener:
+	docker compose exec worker python scripts/parse_structured_screener.py
+	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import sync_quarterly_fundamentals_job; asyncio.run(sync_quarterly_fundamentals_job({}))"
+
+sync-screener:
+	docker compose exec worker python scripts/scrape_raw_screener.py
+	docker compose exec worker python scripts/parse_structured_screener.py
+	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import sync_quarterly_fundamentals_job, compute_all_scores_job; asyncio.run(sync_quarterly_fundamentals_job({})); asyncio.run(compute_all_scores_job({}))"
+
+run-forecasts:
+	docker compose exec worker python run_all_forecasts.py
+
 sync-regime:
 	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import sync_market_regime; print(asyncio.run(sync_market_regime({})))"
 
@@ -45,3 +63,4 @@ test:
 lint:
 	ruff check .
 	mypy apps packages
+

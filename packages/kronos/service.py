@@ -23,6 +23,20 @@ class KronosService:
         if not Kronos:
             raise RuntimeError("Kronos dependencies (torch, etc.) are not installed or Kronos models not found.")
             
+        # If model weights or tokenizer do not exist locally, download from Hugging Face
+        if not os.path.exists(self._tokenizer_path) or (not os.path.exists(self._model_path) and not os.path.exists("packages/kronos/weights/kronos_small")):
+            try:
+                from scripts.download_kronos import download_models
+                download_models()
+            except Exception as exc:
+                pass
+
+        # If fine-tuned weights aren't present, fallback gracefully to base kronos_small
+        if not os.path.exists(self._model_path):
+            fallback_path = "packages/kronos/weights/kronos_small"
+            if os.path.exists(fallback_path):
+                self._model_path = fallback_path
+
         tokenizer = KronosTokenizer.from_pretrained(self._tokenizer_path)
         model = Kronos.from_pretrained(self._model_path)
         

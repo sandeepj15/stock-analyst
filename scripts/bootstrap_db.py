@@ -43,6 +43,17 @@ async def bootstrap() -> None:
         )
         if seed_res.returncode == 0:
             logger.info("Initial universe seeded successfully.")
+            logger.info("Computing initial market regime and research scores for seed universe...")
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import asyncio; from apps.worker.jobs import sync_market_regime, compute_all_scores_job; "
+                    "asyncio.run(sync_market_regime({})); asyncio.run(compute_all_scores_job({}))",
+                ],
+                capture_output=False,
+            )
+            logger.info("Initial regime and scores ready.")
         else:
             logger.warning("Initial universe seed exited with code %s.", seed_res.returncode)
     else:
