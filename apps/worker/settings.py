@@ -21,6 +21,7 @@ from apps.worker.jobs import (
     sync_fundamentals_job,
     sync_market_regime,
     sync_quarterly_fundamentals_job,
+    sync_recent_earnings_job,
 )
 from packages.common.config import get_settings
 from packages.common.logging import configure_logging
@@ -52,6 +53,7 @@ class WorkerSettings:
         # addition to running on the cron schedule below.
         daily_market_close_sync,
         check_missed_market_close_sync,
+        sync_recent_earnings_job,
     ]
     cron_jobs = [
         cron(
@@ -112,6 +114,17 @@ class WorkerSettings:
             minute={0, 15, 30, 45},
             run_at_startup=True,
             timeout=3600,
+        ),
+        cron(
+            sync_recent_earnings_job,
+            # Autonomous earnings sync: checks BSE Financial Results feed every 2 hours
+            # on weekdays between 09:30 IST and 21:30 IST (04:00 to 16:00 UTC).
+            # When an active stock announces results, it verifies whether Screener.in has
+            # published the new quarter before updating DB and recomputing scores.
+            weekday={0, 1, 2, 3, 4},
+            hour={4, 6, 8, 10, 12, 14, 16},
+            minute=20,
+            timeout=1800,
         ),
     ]
     redis_settings = RedisSettings.from_dsn(_settings.REDIS_URL)

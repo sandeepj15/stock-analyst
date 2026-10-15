@@ -938,3 +938,18 @@ async def check_missed_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     result = await daily_market_close_sync(ctx)
     return {"action": "triggered_catchup", "result": result}
 
+
+async def sync_recent_earnings_job(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Sync newly declared quarterly financial results from BSE feed.
+
+    Inspects BSE Financial Results feed, identifies companies in our universe,
+    verifies if the new quarter has appeared on Screener.in, and ingests
+    new fundamental snapshots and updates research scores for those specific stocks.
+    Skips any stock where data is already present or not yet published on Screener.
+    """
+    from packages.fundamentals.earnings_sync import sync_recent_earnings
+
+    async with session_scope() as session:
+        return await sync_recent_earnings(session)
+
+

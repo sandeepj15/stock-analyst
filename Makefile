@@ -42,6 +42,9 @@ sync-screener:
 	docker compose exec worker python scripts/parse_structured_screener.py
 	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import sync_quarterly_fundamentals_job, compute_all_scores_job; asyncio.run(sync_quarterly_fundamentals_job({})); asyncio.run(compute_all_scores_job({}))"
 
+sync-recent-earnings:
+	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import sync_recent_earnings_job; print(asyncio.run(sync_recent_earnings_job({})))"
+
 run-forecasts:
 	docker compose exec worker python run_all_forecasts.py
 
