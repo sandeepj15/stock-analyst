@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from apps.api.routes import ai, analyst, fundamentals, health, instruments, market, momentum, scoring, stocks
 from packages.common.config import get_settings
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     app.include_router(health.router)
     app.include_router(instruments.router)

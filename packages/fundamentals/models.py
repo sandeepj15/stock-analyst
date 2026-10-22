@@ -122,3 +122,21 @@ class StructuredProviderData(Base):
     source_scrape_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("raw_provider_scrapes.id", ondelete="SET NULL"), nullable=True
     )
+
+
+class InstitutionalHolding(Base):
+    """Institutional & Shareholding flow metrics (FII, DII, Promoter) extracted per instrument."""
+    __tablename__ = "institutional_holdings"
+
+    instrument_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("instruments.id", ondelete="CASCADE"), primary_key=True
+    )
+    latest_quarter: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fii_current: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    fii_qoq_change: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True, index=True)
+    dii_current: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    dii_qoq_change: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    promoter_current: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    promoter_qoq_change: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    public_current: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

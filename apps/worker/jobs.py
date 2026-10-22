@@ -33,13 +33,13 @@ import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import pandas as pd
 from sqlalchemy import func, select
 
 from packages.analyst_estimates.factory import get_analyst_estimate_provider
 from packages.analyst_estimates.ingestion import (
     ANALYST_RATING_CACHE_TTL_SECONDS,
     analyst_rating_cache_key,
-    sync_analyst_estimate,
     to_analyst_estimate_cache_payload,
 )
 from packages.analyst_estimates.models import AnalystEstimate
@@ -51,6 +51,7 @@ from packages.fundamentals.factory import get_fundamental_provider, get_quarterl
 from packages.fundamentals.ingestion import sync_fundamentals as sync_fundamentals_for_instrument
 from packages.market_data.factory import get_provider
 from packages.market_data.ingestion import DEFAULT_INGESTION_CONCURRENCY, ingest_daily_bars_for_instruments
+from packages.market_data.models import OHLCVDaily
 from packages.market_data.relative_strength import compute_universe_sector_relative_strength
 from packages.momentum.models import MomentumScan as MomentumScanRow
 from packages.momentum.rs_rank import percentile_rank_universe
@@ -70,6 +71,8 @@ from packages.scoring.engine import (
     to_score_response_payload,
 )
 from packages.scoring.models import ResearchScore as ResearchScoreRow
+from packages.strategy.models import VcpScan
+from packages.strategy.vcp import evaluate_vcp
 
 logger = logging.getLogger(__name__)
 
@@ -554,12 +557,124 @@ async def compute_all_momentum_scans_job(ctx: dict[str, Any], instrument_ids: li
     return results
 
 
+async def compute_all_vcp_scans_job(
+    ctx: dict[str, Any], instrument_ids: list[str] | None = None
+) -> dict[str, Any]:
+    """Batch Volatility Contraction Pattern (VCP) scanner for active equity instruments.
+
+    Evaluates 260+ trading days of daily OHLCV bars using `packages.strategy.vcp.evaluate_vcp`,
+    identifying contracted bases, volume dry-up, and pivots, and persists results to `vcp_scans`.
+    """
+    results: dict[str, Any] = {"scanned": [], "vcp_setups": [], "skipped_insufficient_history": [], "failed": []}
+
+    async with session_scope() as session:
+        stmt = select(Instrument.id, Instrument.symbol, Instrument.exchange).where(
+            Instrument.active.is_(True), Instrument.instrument_type == "EQUITY"
+        )
+        if instrument_ids:
+            stmt = stmt.where(Instrument.id.in_(instrument_ids))
+        targets = (await session.execute(stmt)).all()
+
+        today = datetime.now(UTC).date()
+        scanned_stmt = (
+            select(VcpScan.instrument_id)
+            .where(func.date(VcpScan.computed_at) == today)
+            .distinct()
+        )
+        scanned_ids = set((await session.execute(scanned_stmt)).scalars().all())
+        if scanned_ids and not instrument_ids:
+            initial_count = len(targets)
+            targets = [t for t in targets if t[0] not in scanned_ids]
+            logger.info(
+                "compute_all_vcp_scans_job: skipping already-scanned instruments for today",
+                extra={"already_scanned": len(scanned_ids), "remaining": len(targets), "total": initial_count},
+            )
+
+        if not targets:
+            logger.info("compute_all_vcp_scans_job: all instruments already scanned for today, nothing to do")
+            return results
+
+    semaphore = asyncio.Semaphore(16)
+
+    async def _scan_one(instrument_id: Any, symbol: str, exchange: str) -> None:
+        async with semaphore:
+            try:
+                async with session_scope() as session:
+                    ohlcv_stmt = (
+                        select(OHLCVDaily)
+                        .where(OHLCVDaily.instrument_id == instrument_id)
+                        .order_by(OHLCVDaily.trading_date.asc())
+                    )
+                    bars = (await session.execute(ohlcv_stmt)).scalars().all()
+                    if len(bars) < 260:
+                        results["skipped_insufficient_history"].append({"symbol": symbol, "bars": len(bars)})
+                        return
+
+                    df = pd.DataFrame([{
+                        "date": b.trading_date,
+                        "open": float(b.open),
+                        "high": float(b.high),
+                        "low": float(b.low),
+                        "close": float(b.close),
+                        "volume": float(b.volume)
+                    } for b in bars])
+
+                    res = evaluate_vcp(df)
+                    is_setup = res.get("is_vcp_setup", False)
+
+                    scan = VcpScan(
+                        instrument_id=instrument_id,
+                        scan_date=df.iloc[-1]["date"],
+                        is_vcp_setup=is_setup,
+                        pivot_price=res.get("pivot_price"),
+                        stop_loss_price=res.get("stop_loss_price"),
+                        risk_reward_pct=res.get("risk_reward_pct"),
+                        num_contractions=res.get("num_contractions"),
+                        contractions_depth=res.get("contractions_depth"),
+                        vdu_flag=res.get("vdu_flag"),
+                        reason=res.get("reason"),
+                        computed_at=datetime.now(UTC),
+                    )
+                    session.add(scan)
+                    await session.commit()
+
+                results["scanned"].append({"symbol": symbol, "is_vcp_setup": is_setup})
+                if is_setup:
+                    results["vcp_setups"].append(symbol)
+            except Exception as exc:
+                logger.error(
+                    "compute_all_vcp_scans_job: instrument failed, continuing with next",
+                    extra={"symbol": symbol, "exchange": exchange, "error": str(exc)},
+                )
+                results["failed"].append({"symbol": symbol, "error": str(exc)})
+
+    await asyncio.gather(*[_scan_one(iid, sym, exch) for iid, sym, exch in targets])
+
+    logger.info(
+        "compute_all_vcp_scans_job completed",
+        extra={
+            "scanned": len(results["scanned"]),
+            "vcp_setups": len(results["vcp_setups"]),
+            "skipped_insufficient_history": len(results["skipped_insufficient_history"]),
+            "failed": len(results["failed"]),
+        },
+    )
+    return results
+
+
 # Wildcard match for every `GET /api/v1/instruments` listing cache key
 # variant (one per exchange/active_only/sort/order/momentum_pass
 # combination - see `apps/api/routes/instruments.py`'s `cache_key`
 # f-string). All share the `instruments_listing:v1:` prefix, so a single
 # pattern delete covers every variant without enumerating them.
-INSTRUMENTS_LISTING_CACHE_PATTERN = "instruments_listing:v1:*"
+INSTRUMENTS_LISTING_CACHE_PATTERN = "instruments_listing:*"
+MARKET_SECTORS_CACHE_PATTERN = "market_sectors:*"
+MARKET_SCORE_DIST_CACHE_PATTERN = "market_score_distribution:*"
+MARKET_REGIME_CACHE_PATTERN = "market_regime:*"
+STOCK_PRICE_CACHE_PATTERN = "stock_price:*"
+INSTRUMENTS_SEARCH_CACHE_PATTERN = "instruments_search:*"
+BREAKOUT_MAP_CACHE_PATTERN = "*breakout*"
+MULTIBAGGER_CACHE_PATTERN = "multibagger_symbols:*"
 
 
 def _summarize_step_result(result: Any) -> dict[str, Any]:
@@ -585,10 +700,9 @@ def _summarize_step_result(result: Any) -> dict[str, Any]:
 async def evaluate_ml_forecasts_job(ctx: dict[str, Any]) -> dict[str, Any]:
     """Evaluate historical ML forecasts against actual realized prices."""
     logger.info("[evaluate_ml_forecasts_job] Starting forecast evaluation.")
-    import pandas as pd
-    from sqlalchemy import select, update, text
+    from sqlalchemy import select, text
+
     from packages.common.db import session_scope
-    from packages.common.models import Instrument
     from packages.market_data.models import OHLCVDaily
     
     evaluated_count = 0
@@ -680,12 +794,13 @@ async def generate_ml_forecasts_job(ctx: dict[str, Any], instrument_ids: list[st
     """Generate Kronos ML 5-day forecasts for the provided instruments (Phase 2)."""
     logger.info(f"[generate_ml_forecasts_job] Starting for {len(instrument_ids) if instrument_ids else 'all'} instruments.")
     import pandas as pd
-    from sqlalchemy import select, insert
+    from sqlalchemy import select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     from packages.common.db import session_scope
     from packages.common.models import Instrument
-    from packages.market_data.models import OHLCVDaily
     from packages.kronos.service import KronosService
+    from packages.market_data.models import OHLCVDaily
     
     success_count = 0
     failure_count = 0
@@ -740,8 +855,9 @@ async def generate_ml_forecasts_job(ctx: dict[str, Any], instrument_ids: list[st
                 
                 as_of_date = rows[-1]._mapping['timestamps']
                 
-                from packages.common.models import MLForecast
                 import uuid
+
+                from packages.common.models import MLForecast
                 stmt = pg_insert(MLForecast).values(
                     id=uuid.uuid4(),
                     instrument_id=inst_id,
@@ -799,7 +915,10 @@ async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     4. `compute_all_momentum_scans_job` - fresh Stage 2 Momentum Scan for
        every active EQUITY instrument, written straight through to the
        Redis momentum-scan cache (packages/momentum/service.py).
-    5. Proactively invalidate every `GET /api/v1/instruments` listing
+    5. `compute_all_vcp_scans_job` - fresh Volatility Contraction Pattern (VCP)
+       scans for every active EQUITY instrument, persisted to `vcp_scans`.
+    6. `sync_analyst_estimates_job` - analyst targets and ratings.
+    7. Proactively invalidate every `GET /api/v1/instruments` listing
        cache key variant (`packages.common.cache.delete_pattern`) so the
        home page reflects today's fresh data immediately, instead of
        waiting up to `LISTING_CACHE_TTL_SECONDS` (90s) for the existing
@@ -860,11 +979,20 @@ async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     await _run_step("market_regime", sync_market_regime(ctx))
     await _run_step("research_scores", compute_all_scores_job(ctx))
     await _run_step("momentum_scans", compute_all_momentum_scans_job(ctx))
+    await _run_step("vcp_scans", compute_all_vcp_scans_job(ctx))
     await _run_step("analyst_estimates", sync_analyst_estimates_job(ctx))
+    await _run_step("ai_alpha_picks", generate_daily_ai_alpha_picks_job(ctx))
 
     cache_step_started = time.monotonic()
     try:
         keys_deleted = await cache.delete_pattern(INSTRUMENTS_LISTING_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(MARKET_SECTORS_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(MARKET_SCORE_DIST_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(MARKET_REGIME_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(STOCK_PRICE_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(INSTRUMENTS_SEARCH_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(BREAKOUT_MAP_CACHE_PATTERN)
+        keys_deleted += await cache.delete_pattern(MULTIBAGGER_CACHE_PATTERN)
         step_summary["cache_invalidation"] = {
             "ok": True,
             "duration_seconds": round(time.monotonic() - cache_step_started, 2),
@@ -951,5 +1079,14 @@ async def sync_recent_earnings_job(ctx: dict[str, Any]) -> dict[str, Any]:
 
     async with session_scope() as session:
         return await sync_recent_earnings(session)
+
+
+async def generate_daily_ai_alpha_picks_job(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Evaluates multi-factor predictive signals (Momentum, Value, Quality, Earnings Revisions) and produces AI Alpha Picks."""
+    from packages.ai.alpha_picks import generate_daily_ai_alpha_picks
+    logger.info("Executing generate_daily_ai_alpha_picks_job...")
+    result = await generate_daily_ai_alpha_picks()
+    logger.info("generate_daily_ai_alpha_picks_job completed", extra={"picks_count": result.get("picks_count", 0)})
+    return result
 
 

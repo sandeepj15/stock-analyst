@@ -49,3 +49,7 @@ secrets/
 packages/kronos/weights/
 packages/kronos/data/*.csv
 *.safetensors
+
+# Build & test artifacts
+*.tsbuildinfo
+screenshots/

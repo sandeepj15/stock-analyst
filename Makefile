@@ -60,6 +60,9 @@ compute-scores:
 compute-momentum-scans:
 	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import compute_all_momentum_scans_job; print(asyncio.run(compute_all_momentum_scans_job({})))"
 
+compute-vcp-scans:
+	docker compose exec worker python -c "import asyncio; from apps.worker.jobs import compute_all_vcp_scans_job; print(asyncio.run(compute_all_vcp_scans_job({})))"
+
 test:
 	pytest -q
 

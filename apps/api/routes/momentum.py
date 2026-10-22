@@ -19,6 +19,7 @@ from packages.common.db import get_db_session
 from packages.momentum.models import MomentumScan
 from packages.momentum.rs_rank import RS_RANK_UNIVERSE_LABEL
 from packages.momentum.scanner import DEFAULT_SMA200_TREND_LOOKBACK_DAYS
+from packages.strategy.models import VcpScan
 from packages.momentum.service import (
     MOMENTUM_SCAN_CACHE_TTL_SECONDS,
     ConditionOut,
@@ -85,6 +86,18 @@ async def get_momentum_scan(
         .limit(1)
     )
     latest_row = (await session.execute(stmt)).scalar_one_or_none()
+
+    # Query latest VCP setup status
+    vcp_stmt = (
+        select(VcpScan)
+        .where(VcpScan.instrument_id == instrument.id)
+        .order_by(VcpScan.computed_at.desc())
+        .limit(1)
+    )
+    vcp_row = (await session.execute(vcp_stmt)).scalar_one_or_none()
+    is_vcp = vcp_row.is_vcp_setup if vcp_row is not None else None
+    vcp_reason = vcp_row.reason if vcp_row is not None else None
+
     if latest_row is not None:
         result = MomentumScanResponse(
             instrument_id=str(latest_row.instrument_id),
@@ -101,6 +114,8 @@ async def get_momentum_scan(
             methodology_version=latest_row.methodology_version,
             computed_at=latest_row.computed_at.isoformat(),
             reason=None,
+            is_vcp_setup=is_vcp,
+            vcp_reason=vcp_reason,
             cache_hit=False,
         )
         await cache.set_json(cache_key, to_momentum_scan_cache_payload(result), MOMENTUM_SCAN_CACHE_TTL_SECONDS)
@@ -109,5 +124,7 @@ async def get_momentum_scan(
     result = await compute_momentum_scan(
         session, instrument, sma200_trend_lookback_days=sma200_trend_lookback_days
     )
+    result.is_vcp_setup = is_vcp
+    result.vcp_reason = vcp_reason
     await cache.set_json(cache_key, to_momentum_scan_cache_payload(result), MOMENTUM_SCAN_CACHE_TTL_SECONDS)
     return result

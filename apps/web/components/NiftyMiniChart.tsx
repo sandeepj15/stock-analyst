@@ -23,9 +23,37 @@ export default function NiftyMiniChart({ regime }: { regime: MarketRegimeRespons
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   
   const [error, setError] = useState<string | null>(null);
-  const [latestClose, setLatestClose] = useState<number | null>(null);
-  const [changePct, setChangePct] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("3M");
+  const [latestClose, setLatestClose] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("signalforge_nifty_price_3M");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.latestClose) return parsed.latestClose;
+        }
+      } catch {}
+    }
+    return regime?.nifty_close ?? null;
+  });
+  const [changePct, setChangePct] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("signalforge_nifty_price_3M");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.changePct !== undefined) return parsed.changePct;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (regime?.nifty_close && latestClose === null) {
+      setLatestClose(regime.nifty_close);
+    }
+  }, [regime?.nifty_close, latestClose]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -52,6 +80,19 @@ export default function NiftyMiniChart({ regime }: { regime: MarketRegimeRespons
     });
     chartRef.current = chart;
     seriesRef.current = series;
+
+    // Immediately populate with cached data from sessionStorage for 0ms initial render
+    try {
+      const saved = sessionStorage.getItem(`signalforge_nifty_price_${timeRange}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.bars && parsed.bars.length > 0) {
+          const data: LineData[] = parsed.bars.map((b: any) => ({ time: toTimestamp(b.date), value: b.close }));
+          series.setData(data);
+          chart.timeScale().fitContent();
+        }
+      }
+    } catch {}
 
     const resizeObserver = new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth }));
     resizeObserver.observe(el);
@@ -82,8 +123,15 @@ export default function NiftyMiniChart({ regime }: { regime: MarketRegimeRespons
         if (price.bars.length > 0) {
           const latest = price.bars[price.bars.length - 1];
           const first = price.bars[0];
+          const chg = ((latest.close - first.close) / first.close) * 100;
           setLatestClose(latest.close);
-          setChangePct(((latest.close - first.close) / first.close) * 100);
+          setChangePct(chg);
+          try {
+            sessionStorage.setItem(
+              `signalforge_nifty_price_${timeRange}`,
+              JSON.stringify({ bars: price.bars, latestClose: latest.close, changePct: chg })
+            );
+          } catch {}
         } else {
           setLatestClose(null);
           setChangePct(null);

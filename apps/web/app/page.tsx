@@ -4,6 +4,11 @@
 import { listInstruments } from "../lib/api";
 import HomeBrowser from "../components/HomeBrowser";
 
+// Cache the home page universe listing for 60 seconds with ISR so navigation
+// back to the home page responds instantaneously (0ms) instead of re-fetching
+// 1.5MB of data on every single click.
+export const revalidate = 60;
+
 export default async function HomePage() {
   let instruments: Awaited<ReturnType<typeof listInstruments>> = [];
   let loadError: string | null = null;

@@ -28,11 +28,15 @@ import type {
   AiChatResponse,
   AiStatusResponse,
   AiStockContextResponse,
+  MlPerformanceResponse,
+  ChecklistSummaryResponse,
+  StockChecklistResult,
+  AiAlphaPicksResponse,
 } from "./types";
 
 function apiBaseUrl(): string {
   if (typeof window === "undefined") {
-    return process.env.API_URL ?? "http://api:8000";
+    return process.env.API_URL ?? "http://localhost:8000";
   }
   // On the client, use relative paths so requests flow through Next.js rewrites.
   return process.env.NEXT_PUBLIC_API_URL ?? window.location.origin;
@@ -49,7 +53,22 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson<T>(path: string, params?: Record<string, string | undefined>): Promise<T> {
+const MAX_CLIENT_CACHE_ENTRIES = 60;
+const clientCache = new Map<string, { data: any; expiry: number }>();
+
+function setClientCache(urlStr: string, data: any, ttlMs: number = 60_000) {
+  if (clientCache.size >= MAX_CLIENT_CACHE_ENTRIES) {
+    const oldestKey = clientCache.keys().next().value;
+    if (oldestKey) clientCache.delete(oldestKey);
+  }
+  clientCache.set(urlStr, { data, expiry: Date.now() + ttlMs });
+}
+
+async function getJson<T>(
+  path: string,
+  params?: Record<string, string | undefined>,
+  fetchOptions?: RequestInit
+): Promise<T> {
   const url = new URL(path, apiBaseUrl());
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -57,9 +76,17 @@ async function getJson<T>(path: string, params?: Record<string, string | undefin
     }
   }
 
+  const urlStr = url.toString();
+  if (typeof window !== "undefined") {
+    const hit = clientCache.get(urlStr);
+    if (hit && hit.expiry > Date.now()) {
+      return hit.data as T;
+    }
+  }
+
   let res: Response;
   try {
-    res = await fetch(url.toString(), { cache: "no-store" });
+    res = await fetch(urlStr, fetchOptions);
   } catch (err) {
     throw new ApiError(0, `Could not reach the API (${(err as Error).message}).`);
   }
@@ -75,7 +102,13 @@ async function getJson<T>(path: string, params?: Record<string, string | undefin
     throw new ApiError(res.status, detail);
   }
 
-  return (await res.json()) as T;
+  const data = (await res.json()) as T;
+  if (typeof window !== "undefined") {
+    // 5-minute client cache for market aggregates, 60-second for stock data
+    const ttl = path.includes("/market/") ? 300_000 : 60_000;
+    setClientCache(urlStr, data, ttl);
+  }
+  return data;
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -121,15 +154,21 @@ export function listInstruments(opts?: {
   sector?: string;
   minScore?: number;
   maxScore?: number;
+  breakoutOnly?: boolean;
 }): Promise<InstrumentSummary[]> {
-  return getJson<InstrumentSummary[]>("/api/v1/instruments", {
-    sort: opts?.sort,
-    order: opts?.order,
-    momentum_pass: opts?.momentumPass === undefined ? undefined : String(opts.momentumPass),
-    sector: opts?.sector,
-    min_score: opts?.minScore !== undefined ? String(opts.minScore) : undefined,
-    max_score: opts?.maxScore !== undefined ? String(opts.maxScore) : undefined,
-  });
+  return getJson<InstrumentSummary[]>(
+    "/api/v1/instruments",
+    {
+      sort: opts?.sort,
+      order: opts?.order,
+      momentum_pass: opts?.momentumPass === undefined ? undefined : String(opts.momentumPass),
+      sector: opts?.sector,
+      min_score: opts?.minScore !== undefined ? String(opts.minScore) : undefined,
+      max_score: opts?.maxScore !== undefined ? String(opts.maxScore) : undefined,
+      breakout_only: opts?.breakoutOnly === undefined ? undefined : String(opts.breakoutOnly),
+    },
+    { next: { revalidate: 60 } }
+  );
 }
 
 export function getAnalystRating(symbol: string): Promise<AnalystRatingResponse> {
@@ -303,4 +342,84 @@ export async function streamAiChat(
 
   return fullText;
 }
+
+export async function getMlPerformance(asOf?: string): Promise<MlPerformanceResponse> {
+  const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
+  const res = await fetch(`${apiBaseUrl()}/api/v1/market/ml-performance${query}`, {
+    next: { revalidate: 60 },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch ML performance: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getFundamentalChecklist(
+  minScore: number = 6,
+  sector?: string
+): Promise<ChecklistSummaryResponse> {
+  const params = new URLSearchParams();
+  params.set("min_score", String(minScore));
+  if (sector && sector !== "all") {
+    params.set("sector", sector);
+  }
+  const res = await fetch(`${apiBaseUrl()}/api/v1/market/fundamental-checklist?${params.toString()}`, {
+    next: { revalidate: 60 },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch fundamental checklist: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getStockChecklist(
+  symbol: string,
+  exchange: string = "NSE"
+): Promise<StockChecklistResult> {
+  const res = await fetch(`${apiBaseUrl()}/api/v1/stocks/${encodeURIComponent(symbol)}/checklist?exchange=${encodeURIComponent(exchange)}`, {
+    next: { revalidate: 60 },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch checklist for ${symbol}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function getAiAlphaPicks(forceRefresh = false): Promise<AiAlphaPicksResponse> {
+  const query = forceRefresh ? "?force_refresh=true" : "";
+  const res = await fetch(`${apiBaseUrl()}/api/v1/ai/alpha-picks${query}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch AI alpha picks: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function generateAiAlphaPicks(): Promise<AiAlphaPicksResponse> {
+  const res = await fetch(`${apiBaseUrl()}/api/v1/ai/alpha-picks/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to generate AI alpha picks: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Pre-warms the client-side cache for a stock symbol during idle time or hover.
+ * This ensures that when the user clicks the stock, its price and technical charts
+ * resolve with 0ms delay directly from memory.
+ */
+export function prefetchStock(symbol: string, range: RangeKey = "6M"): void {
+  if (typeof window === "undefined" || !symbol) return;
+  const sym = symbol.toUpperCase();
+  getPrice(sym, range).catch(() => {});
+  getTechnicals(sym, range).catch(() => {});
+  getScore(sym).catch(() => {});
+}
+
+
 

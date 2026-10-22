@@ -31,19 +31,60 @@ export default function MarketPulse({
   selectedSector,
   onSelectSector,
 }: Props) {
-  const [regime, setRegime] = useState<MarketRegimeResponse | null>(null);
-  const [scoreDistribution, setScoreDistribution] = useState<ScoreDistributionResponse | null>(null);
-  const [sectors, setSectors] = useState<SectorsResponse | null>(null);
+  const [regime, setRegime] = useState<MarketRegimeResponse | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("signalforge_regime_cache");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
+  const [scoreDistribution, setScoreDistribution] = useState<ScoreDistributionResponse | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("signalforge_score_dist_cache");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
+  const [sectors, setSectors] = useState<SectorsResponse | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem("signalforge_sectors_cache");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
 
   useEffect(() => {
     getMarketRegime()
-      .then(setRegime)
-      .catch(() => setRegime(null)); // NiftyMiniChart/BreadthGauge render their own "not yet computed" state.
+      .then((res) => {
+        setRegime(res);
+        try {
+          sessionStorage.setItem("signalforge_regime_cache", JSON.stringify(res));
+        } catch {}
+      })
+      .catch(() => setRegime(null));
+
     getScoreDistribution()
-      .then(setScoreDistribution)
+      .then((res) => {
+        setScoreDistribution(res);
+        try {
+          sessionStorage.setItem("signalforge_score_dist_cache", JSON.stringify(res));
+        } catch {}
+      })
       .catch(() => setScoreDistribution(null));
+
     getSectorSummary()
-      .then(setSectors)
+      .then((res) => {
+        setSectors(res);
+        try {
+          sessionStorage.setItem("signalforge_sectors_cache", JSON.stringify(res));
+        } catch {}
+      })
       .catch(() => setSectors(null));
   }, []);
 
@@ -54,7 +95,12 @@ export default function MarketPulse({
         <NiftyMiniChart regime={regime} />
         <BreadthGauge regime={regime} />
         <MarketInternalsWidget instruments={instruments} />
-        <ScoreDistributionChart data={scoreDistribution} selectedBand={selectedBand} onSelectBand={onSelectBand} />
+        <ScoreDistributionChart
+          data={scoreDistribution}
+          selectedBand={selectedBand}
+          onSelectBand={onSelectBand}
+          instruments={instruments}
+        />
         <SectorHeatmap data={sectors} selectedSector={selectedSector} onSelectSector={onSelectSector} />
         <TopMovers instruments={instruments} />
         <MarketLeadersWidget instruments={instruments} />

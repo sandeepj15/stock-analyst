@@ -5,7 +5,7 @@ import { THEME_CHANGE_EVENT, applyTheme, getCurrentTheme, type ThemeName } from 
 
 // Must match `getCurrentTheme()`'s SSR fallback (lib/theme.ts) exactly.
 // This is intentionally NOT the live theme - see the comment below.
-const SSR_SAFE_DEFAULT: ThemeName = "dark";
+const SSR_SAFE_DEFAULT: ThemeName = "light";
 
 /** Live theme state + toggle, shared across every component via a window
  * CustomEvent (no context provider needed - app/layout.tsx's inline

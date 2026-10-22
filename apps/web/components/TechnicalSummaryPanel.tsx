@@ -19,10 +19,41 @@ function Flag({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-export default function TechnicalSummaryPanel({ snapshot }: { snapshot: IndicatorSnapshot }) {
+interface Props {
+  snapshot: IndicatorSnapshot;
+  tvSignal1d?: string | null;
+  tvSignal1w?: string | null;
+  tvMomentumFlag?: string | null;
+}
+
+export default function TechnicalSummaryPanel({
+  snapshot,
+  tvSignal1d,
+  tvSignal1w,
+  tvMomentumFlag,
+}: Props) {
   return (
     <div className="panel">
-      <h2>Technical summary (as of {snapshot.as_of_date})</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+        <h2 style={{ margin: 0 }}>Technical summary (as of {snapshot.as_of_date})</h2>
+        {(tvSignal1d || tvSignal1w) && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 600 }}>TradingView TA:</span>
+            <span className={`tv-badge ${tvSignal1d === "STRONG_BUY" ? "tv-strong-buy" : tvSignal1d === "STRONG_SELL" ? "tv-strong-sell" : ""}`}>
+              1D: {tvSignal1d ?? "NEUTRAL"}
+            </span>
+            <span className={`tv-badge ${tvSignal1w === "STRONG_BUY" ? "tv-strong-buy" : tvSignal1w === "STRONG_SELL" ? "tv-strong-sell" : ""}`}>
+              1W: {tvSignal1w ?? "NEUTRAL"}
+            </span>
+            {tvMomentumFlag === "STRONG_BUY_BOTH" && (
+              <span className="tv-badge tv-strong-buy-both">🔥 2x Strong Buy</span>
+            )}
+            {tvMomentumFlag === "STRONG_SELL_BOTH" && (
+              <span className="tv-badge tv-strong-sell-both">🚨 2x Strong Sell</span>
+            )}
+          </div>
+        )}
+      </div>
       <div className="grid-3">
         <div>
           <Metric label="RSI (14)" value={formatNumber(snapshot.rsi_14, 1)} />

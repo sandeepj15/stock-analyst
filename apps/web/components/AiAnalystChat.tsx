@@ -46,7 +46,7 @@ export default function AiAnalystChat({ initialSymbol, isEmbedded = false }: Pro
             connected: false,
             provider: "vertex_ai",
             location: "global",
-            model: "gemini-2.5-flash",
+            model: "gemini-3.5-flash",
             models: [],
             model_ready: false,
             error: e.message,

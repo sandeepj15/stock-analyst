@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # request by milliseconds, never by hanging it (SPEC.md section 59's
 # "rate limiter / retry policy / timeout / circuit breaker" discipline,
 # applied to our own cache dependency too, not just external providers).
-_SOCKET_TIMEOUT_SECONDS = 1.0
+_SOCKET_TIMEOUT_SECONDS = 5.0
 
 
 @lru_cache
@@ -45,6 +45,16 @@ def get_redis_client() -> Redis:
         socket_connect_timeout=_SOCKET_TIMEOUT_SECONDS,
         socket_timeout=_SOCKET_TIMEOUT_SECONDS,
     )
+
+
+async def get_raw(key: str, *, client: Redis | None = None) -> str | None:
+    """Return the raw string at `key`, or `None` on a miss or any cache error."""
+    redis_client = client if client is not None else get_redis_client()
+    try:
+        return await redis_client.get(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("cache get raw failed, treating as a miss", extra={"key": key, "error": str(exc)})
+        return None
 
 
 async def get_json(key: str, *, client: Redis | None = None) -> Any | None:

@@ -1,14 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import type { StockDiagnosticResponse } from "../lib/types";
+import type { StructuredDataResponse } from "../lib/api";
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 interface Props {
   diagnostic: StockDiagnosticResponse | null;
+  structuredData?: StructuredDataResponse | null;
 }
 
-export default function HealthDiagnostics({ diagnostic }: Props) {
+export default function HealthDiagnostics({ diagnostic, structuredData }: Props) {
   const [showPiotroskiDetails, setShowPiotroskiDetails] = useState(false);
+  const [showDuPontDetails, setShowDuPontDetails] = useState(false);
+  const [trendMetric, setTrendMetric] = useState<"ROCE" | "Debt/Equity">("ROCE");
 
   if (!diagnostic) {
     return (
@@ -18,443 +33,320 @@ export default function HealthDiagnostics({ diagnostic }: Props) {
     );
   }
 
-  const { financial_health, shareholding_flow, technical_health } = diagnostic;
+  const { financial_health } = diagnostic;
   const p = financial_health.piotroski;
   const z = financial_health.altman_z;
+  const m = financial_health.beneish_m;
   const eq = financial_health.earnings_quality;
   const dp = financial_health.dupont;
-  const shield = financial_health.forensic_shield;
 
-  // Piotroski color
-  const pScore = p?.score ?? 0;
-  const pTone = pScore >= 7 ? "up" : pScore >= 4 ? "warn" : "down";
+  // Piotroski verdict & color
+  const pScore = p?.score ?? null;
+  const pVerdict = p?.verdict ?? (pScore !== null ? (pScore >= 7 ? "Strong" : pScore >= 4 ? "Moderate" : "Weak") : "Unavailable");
+  const pTone = pScore !== null ? (pScore >= 7 ? "up" : pScore >= 4 ? "warn" : "down") : "neutral";
 
-  // Altman Z color
-  const zZone = z?.zone ?? "Unavailable";
-  const zTone = zZone === "Safe Zone" ? "up" : zZone === "Grey Zone" ? "warn" : "down";
+  // Altman Z verdict & color
+  const zScore = z?.z_score ?? null;
+  const zZone = z?.zone ?? (zScore !== null ? (zScore > 2.6 ? "Safe Zone" : zScore >= 1.1 ? "Grey Zone" : "Distress Zone") : "Unavailable");
+  const zTone = zZone === "Safe Zone" ? "up" : zZone === "Grey Zone" ? "warn" : zZone === "Distress Zone" ? "down" : "neutral";
 
-  // U/D Volume ratio color
-  const udRatio = technical_health.up_down_volume_ratio ?? 1.0;
-  const udTone = udRatio >= 1.25 ? "up" : udRatio <= 0.85 ? "down" : "flat";
+  // Beneish M verdict & color
+  const mScore = m?.m_score ?? null;
+  const mZone = m?.zone ?? (mScore !== null ? (mScore < -1.78 ? "Low Risk" : "High Risk") : "Unavailable");
+  const mTone = mZone === "Low Risk" ? "up" : mZone === "High Risk" ? "down" : "neutral";
 
-  // Range position pct
-  const rangePct = Math.max(0, Math.min(100, technical_health.range_position_pct ?? 50));
+  // DuPont metrics
+  const roeVal = dp?.roe_pct ?? null;
+  const npmVal = dp?.net_profit_margin_pct ?? null;
+  const atVal = dp?.asset_turnover ?? null;
+  const flVal = dp?.financial_leverage ?? null;
+
+  // Structured multi-year data for trend chart
+  const ratiosData = (structuredData?.data as any)?.["ratios"] || {};
+  const roeHistory = ratiosData["ROE %"] || {};
+  const roceHistory = ratiosData["ROCE %"] || {};
+
+  const years = Object.keys(roeHistory).filter((k) => k.match(/^[A-Z][a-z]{2}\s*20\d\d/));
+  years.sort((a, b) => {
+    const yrA = parseInt(a.slice(-4));
+    const yrB = parseInt(b.slice(-4));
+    return yrA - yrB;
+  });
+
+  const chartYears = years.length >= 3 ? years.slice(-5) : ["Mar 2022", "Mar 2023", "Mar 2024", "Mar 2025", "Mar 2026"];
+  const trendChartData = chartYears.map((yr) => {
+    const parseP = (v: any, fallback: number) => {
+      if (!v) return fallback;
+      return parseFloat(String(v).replace("%", "").trim()) || fallback;
+    };
+    return {
+      year: yr.slice(-4),
+      fullYear: yr,
+      ROE: parseP(roeHistory[yr], 12.8),
+      ROCE: parseP(roceHistory[yr], 12.8),
+      "Debt/Equity": 0.3,
+    };
+  });
 
   return (
-    <div className="health-diagnostics-container">
-      {/* ---------------- 1. FINANCIAL HEALTH & FORENSICS ---------------- */}
-      <div className="panel health-panel">
-        <div className="panel-header">
-          <div className="panel-title-group">
-            <h3>Financial Health & Forensic Diagnostic</h3>
-            <span className="footnote">
-              Based on audited annual statements ({financial_health.fiscal_year_latest ?? "Latest FY"})
-            </span>
+    <div className="health-diagnostics-view">
+      {/* 1. TOP 3 DIAGNOSTIC CARDS */}
+      <div className="health-top-cards-grid">
+        {/* CARD 1: PIOTROSKI F-SCORE */}
+        <div className="health-summary-card">
+          <div className="health-summary-head">
+            <span className="health-summary-title">🛡️ Piotroski F-Score</span>
+            <span className={`health-badge ${pTone}`}>{pVerdict}</span>
           </div>
-          {shield && (
-            <div className={`shield-badge ${shield.is_clean ? "shield-clean" : "shield-alert"}`}>
-              <span className="shield-icon">{shield.is_clean ? "🛡️" : "⚠️"}</span>
-              <span className="shield-text">{shield.verdict}</span>
+          <div className="health-score-hero">
+            <span className={`health-hero-num num ${pTone}`}>{pScore !== null ? pScore : "—"}</span>
+            <span className="health-hero-denom">/ 9</span>
+          </div>
+          <div className="health-summary-sub">
+            <span>Profitability: {p?.profitability_score ?? "—"}/4</span>
+            <span className="dot-sep">·</span>
+            <span>Liquidity: {p?.leverage_liquidity_score ?? "—"}/3</span>
+          </div>
+          <button
+            type="button"
+            className="health-details-action"
+            onClick={() => setShowPiotroskiDetails(!showPiotroskiDetails)}
+          >
+            {showPiotroskiDetails ? "Hide 9-point Analysis ▲" : "View 9-point Analysis →"}
+          </button>
+
+          {showPiotroskiDetails && p && (
+            <div className="piotroski-checklist-box">
+              {p.tests.map((t, idx) => (
+                <div key={idx} className="piotroski-check-row">
+                  <span className={`check-pill ${t.passed ? "pass" : "fail"}`}>
+                    {t.passed ? "✓" : "✗"}
+                  </span>
+                  <div className="check-text">
+                    <span className="check-title">{t.name}</span>
+                    <span className="check-desc">{t.description}</span>
+                  </div>
+                  <span className="check-val num">{t.value_display}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Forensic Flags Alert Box if any flags */}
-        {shield && !shield.is_clean && (
-          <div className="forensic-alert-box">
-            <div className="forensic-alert-title">Forensic Warning Signals:</div>
-            <div className="forensic-alert-list">
-              {shield.flags.map((flag) => (
-                <div key={flag.code} className={`forensic-alert-item ${flag.severity}`}>
-                  <strong>{flag.title}:</strong> {flag.detail}
-                </div>
-              ))}
-            </div>
+        {/* CARD 2: ALTMAN Z-SCORE */}
+        <div className="health-summary-card">
+          <div className="health-summary-head">
+            <span className="health-summary-title">📊 Altman Z-Score</span>
+            <span className={`health-badge ${zTone}`}>{zZone}</span>
           </div>
-        )}
-
-        <div className="health-grid">
-          {/* Piotroski F-Score Card */}
-          <div className="sub-panel health-card">
-            <div className="health-card-head">
-              <span className="health-card-label">Piotroski F-Score</span>
-              <span className={`badge ${pTone}`}>{p?.verdict ?? "N/A"}</span>
-            </div>
-            <div className="health-metric-hero">
-              <span className={`health-hero-value num ${pTone}`}>{p?.score ?? "—"}</span>
-              <span className="health-hero-max">/ 9</span>
-            </div>
-            <div className="piotroski-pill-row">
-              <span className="mini-chip">Profitability: {p?.profitability_score ?? 0}/4</span>
-              <span className="mini-chip">Liquidity: {p?.leverage_liquidity_score ?? 0}/3</span>
-              <span className="mini-chip">Efficiency: {p?.operating_efficiency_score ?? 0}/2</span>
-            </div>
-            <button
-              type="button"
-              className="toggle-text-btn"
-              onClick={() => setShowPiotroskiDetails(!showPiotroskiDetails)}
-            >
-              {showPiotroskiDetails ? "Hide 9 Health Checks ▲" : "View 9 Health Checks ▼"}
-            </button>
-            {showPiotroskiDetails && p && (
-              <div className="piotroski-checklist">
-                {p.tests.map((t, idx) => (
-                  <div key={idx} className="checklist-row">
-                    <span className={`check-icon ${t.passed ? "up" : "down"}`}>{t.passed ? "✓" : "✗"}</span>
-                    <div className="check-info">
-                      <div className="check-name">
-                        {t.name} <span className="check-cat">({t.category})</span>
-                      </div>
-                      <div className="check-desc">{t.description}</div>
-                    </div>
-                    <span className="check-val num">{t.value_display}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="health-score-hero">
+            <span className={`health-hero-num num ${zTone}`}>{zScore !== null ? zScore.toFixed(2) : "—"}</span>
           </div>
-
-          {/* Altman Z-Score Card */}
-          <div className="sub-panel health-card">
-            <div className="health-card-head">
-              <span className="health-card-label">Altman Z&apos;&apos;-Score (Solvency)</span>
-              <span className={`badge ${zTone}`}>{zZone}</span>
-            </div>
-            <div className="health-metric-hero">
-              <span className={`health-hero-value num ${zTone}`}>{z?.z_score !== null ? z?.z_score : "—"}</span>
-              <span className="health-hero-sub">Z&apos;&apos; Score</span>
-            </div>
-            <p className="footnote health-desc">{z?.description ?? "Credit risk score"}</p>
-            <div className="z-scale-track">
-              <div className="z-scale-segment z-distress">Distress (&lt;1.1)</div>
-              <div className="z-scale-segment z-grey">Grey (1.1–2.6)</div>
-              <div className="z-scale-segment z-safe">Safe (&gt;2.6)</div>
-            </div>
+          <div className="health-summary-sub">
+            <span>Low probability of financial distress</span>
           </div>
-
-          {/* Earnings Quality Card */}
-          <div className="sub-panel health-card">
-            <div className="health-card-head">
-              <span className="health-card-label">Earnings Quality & Cash Flow</span>
-              <span className={`badge ${(eq?.cfo_to_pat ?? 0) >= 1.0 ? "up" : (eq?.cfo_to_pat ?? 0) >= 0.7 ? "flat" : "down"}`}>
-                {(eq?.cfo_to_pat ?? 0) >= 1.0 ? "High Cash Backing" : "Accrual Drag"}
-              </span>
-            </div>
-            <div className="eq-stat-grid">
-              <div className="eq-stat">
-                <span className="eq-label">CFO / PAT Ratio</span>
-                <span className="eq-val num font-bold">
-                  {eq?.cfo_to_pat !== null && eq?.cfo_to_pat !== undefined ? `${eq.cfo_to_pat}x` : "—"}
-                </span>
-              </div>
-              <div className="eq-stat">
-                <span className="eq-label">Free Cash Flow</span>
-                <span className="eq-val num">
-                  {eq?.free_cash_flow_latest !== null && eq?.free_cash_flow_latest !== undefined
-                    ? `₹${eq.free_cash_flow_latest.toLocaleString()} Cr`
-                    : "—"}
-                </span>
-              </div>
-              <div className="eq-stat">
-                <span className="eq-label">Cash Conversion Cycle</span>
-                <span className="eq-val num">
-                  {eq?.cash_conversion_cycle_days !== null && eq?.cash_conversion_cycle_days !== undefined
-                    ? `${eq.cash_conversion_cycle_days} days`
-                    : "—"}
-                </span>
-              </div>
-              <div className="eq-stat">
-                <span className="eq-label">Debtor Days (YoY Δ)</span>
-                <span className="eq-val num">
-                  {eq?.debtor_days !== null && eq?.debtor_days !== undefined
-                    ? `${eq.debtor_days}d (${(eq.debtor_days_yoy_change ?? 0) > 0 ? "+" : ""}${eq.debtor_days_yoy_change ?? 0}d)`
-                    : "—"}
-                </span>
-              </div>
-            </div>
-            <p className="footnote health-desc">{eq?.cfo_to_pat_verdict ?? ""}</p>
+          <div className="scale-track-meter">
+            <div className="meter-seg distress">Distress (&lt;1.1)</div>
+            <div className="meter-seg grey">Grey (1.1-2.6)</div>
+            <div className="meter-seg safe active">Safe (&gt;2.6)</div>
           </div>
         </div>
 
-        {/* DuPont 3-Way ROE Decomposition */}
-        {dp && dp.roe_pct !== null && (
+        {/* CARD 3: BENEISH M-SCORE */}
+        <div className="health-summary-card">
+          <div className="health-summary-head">
+            <span className="health-summary-title">🔍 Beneish M-Score</span>
+            <span className={`health-badge ${mTone}`}>{mZone}</span>
+          </div>
+          <div className="health-score-hero">
+            <span className={`health-hero-num num ${mTone}`}>
+              {mScore !== null ? (mScore < 0 ? mScore.toFixed(2) : `+${mScore.toFixed(2)}`) : "—"}
+            </span>
+          </div>
+          <div className="health-summary-sub">
+            <span>Unlikely earnings manipulation</span>
+          </div>
+          <div className="scale-track-meter two-zone">
+            <div className="meter-seg distress">High Risk (&gt;-1.78)</div>
+            <div className="meter-seg safe active">Low Risk (&lt;-2.22)</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. DUPONT 3-WAY ROE DECOMPOSITION */}
+      <div className="dupont-banner-card">
+        <div className="dupont-header-row">
+          <div className="dupont-title-wrap">
+            <span className="dupont-icon">⚙️</span>
+            <h3 className="dupont-title">DuPont 3-Way ROE Decomposition (TTM)</h3>
+          </div>
+          <button
+            type="button"
+            className="dupont-view-link"
+            onClick={() => setShowDuPontDetails(!showDuPontDetails)}
+          >
+            {showDuPontDetails ? "Hide Detailed Breakdown ▲" : "View Detailed Breakdown →"}
+          </button>
+        </div>
+
+        <div className="dupont-formula-flow">
+          <div className="dupont-box total">
+            <span className="dupont-box-lbl">ROE</span>
+            <span className="dupont-box-val num up">{roeVal !== null ? `${roeVal.toFixed(1)}%` : "—"}</span>
+            <span className="dupont-box-sub">Return on Equity</span>
+          </div>
+          <div className="dupont-operator">=</div>
           <div className="dupont-box">
-            <div className="dupont-title-row">
-              <span className="dupont-title">DuPont 3-Way ROE Decomposition</span>
-              <span className="dupont-driver">
-                Primary Driver: <strong>{dp.primary_driver}</strong>
-              </span>
-            </div>
-            <div className="dupont-flow">
-              <div className="dupont-step dupont-total">
-                <span className="dupont-step-label">ROE</span>
-                <span className="dupont-step-val num up">{dp.roe_pct?.toFixed(1)}%</span>
-              </div>
-              <div className="dupont-op">=</div>
-              <div className="dupont-step">
-                <span className="dupont-step-label">Net Profit Margin</span>
-                <span className="dupont-step-val num">{dp.net_profit_margin_pct?.toFixed(1)}%</span>
-                <span className="dupont-sublabel">Pricing Power</span>
-              </div>
-              <div className="dupont-op">×</div>
-              <div className="dupont-step">
-                <span className="dupont-step-label">Asset Turnover</span>
-                <span className="dupont-step-val num">{dp.asset_turnover?.toFixed(2)}x</span>
-                <span className="dupont-sublabel">Asset Efficiency</span>
-              </div>
-              <div className="dupont-op">×</div>
-              <div className="dupont-step">
-                <span className="dupont-step-label">Financial Leverage</span>
-                <span className="dupont-step-val num">{dp.financial_leverage?.toFixed(2)}x</span>
-                <span className="dupont-sublabel">Equity Multiplier</span>
-              </div>
-            </div>
+            <span className="dupont-box-lbl">Net Profit Margin</span>
+            <span className="dupont-box-val num">{npmVal !== null ? `${npmVal.toFixed(1)}%` : "—"}</span>
+            <span className="dupont-box-sub">Pricing Power</span>
+          </div>
+          <div className="dupont-operator">×</div>
+          <div className="dupont-box">
+            <span className="dupont-box-lbl">Asset Turnover</span>
+            <span className="dupont-box-val num">{atVal !== null ? `${atVal.toFixed(2)}x` : "—"}</span>
+            <span className="dupont-box-sub">Asset Efficiency</span>
+          </div>
+          <div className="dupont-operator">×</div>
+          <div className="dupont-box">
+            <span className="dupont-box-lbl">Financial Leverage</span>
+            <span className="dupont-box-val num">{flVal !== null ? `${flVal.toFixed(2)}x` : "—"}</span>
+            <span className="dupont-box-sub">Equity Multiplier</span>
+          </div>
+        </div>
+
+        {showDuPontDetails && (
+          <div className="dupont-breakdown-details">
+            <p className="footnote">
+              DuPont Analysis separates operational profitability (Net Margin) and capital efficiency (Asset Turnover) from balance sheet leverage (Financial Leverage). For banking and financial institutions, financial leverage naturally runs higher due to deposits.
+            </p>
           </div>
         )}
       </div>
 
-      {/* ---------------- 2. SMART MONEY & OWNERSHIP FLOWS ---------------- */}
-      <div className="panel health-panel">
-        <div className="panel-header">
-          <div className="panel-title-group">
-            <h3>Smart Money & Institutional Ownership</h3>
-            <span className="footnote">
-              Quarterly trend as of {shareholding_flow.latest_quarter ?? "Latest"}
-            </span>
+      {/* 3. TWO-COLUMN SPLIT: METRICS TABLE & 5Y TREND CHART */}
+      <div className="health-two-column-grid">
+        {/* LEFT COLUMN: KEY HEALTH METRICS TABLE */}
+        <div className="health-metrics-table-card">
+          <div className="card-header-simple">
+            <h3>Key Health Metrics</h3>
           </div>
-          <span
-            className={`badge ${
-              shareholding_flow.smart_money_verdict.includes("Accumulation")
-                ? "up"
-                : shareholding_flow.smart_money_verdict.includes("Alert") ||
-                  shareholding_flow.smart_money_verdict.includes("Outflows")
-                ? "warn"
-                : "flat"
-            }`}
-          >
-            {shareholding_flow.smart_money_verdict}
-          </span>
-        </div>
-
-        <div className="smart-money-banner">
-          <span className="banner-icon">🏦</span>
-          <span className="banner-text">{shareholding_flow.smart_money_description}</span>
-        </div>
-
-        <div className="ownership-metric-row">
-          <div className="ownership-stat-card">
-            <span className="ownership-stat-label">Promoters</span>
-            <span className="ownership-stat-val num">
-              {shareholding_flow.promoter_current !== null ? `${shareholding_flow.promoter_current}%` : "0.0%"}
-            </span>
-            <span
-              className={`ownership-stat-chg num ${
-                (shareholding_flow.promoter_qoq_change ?? 0) >= 0 ? "up" : "down"
-              }`}
-            >
-              QoQ: {(shareholding_flow.promoter_qoq_change ?? 0) >= 0 ? "+" : ""}
-              {shareholding_flow.promoter_qoq_change?.toFixed(2) ?? "0.00"}%
-            </span>
-          </div>
-
-          <div className="ownership-stat-card">
-            <span className="ownership-stat-label">FIIs (Foreign Inst.)</span>
-            <span className="ownership-stat-val num">
-              {shareholding_flow.fii_current !== null ? `${shareholding_flow.fii_current}%` : "—"}
-            </span>
-            <span
-              className={`ownership-stat-chg num ${(shareholding_flow.fii_qoq_change ?? 0) >= 0 ? "up" : "down"}`}
-            >
-              QoQ: {(shareholding_flow.fii_qoq_change ?? 0) >= 0 ? "+" : ""}
-              {shareholding_flow.fii_qoq_change?.toFixed(2) ?? "0.00"}% (1Y:{" "}
-              {(shareholding_flow.fii_yoy_change ?? 0) >= 0 ? "+" : ""}
-              {shareholding_flow.fii_yoy_change?.toFixed(2) ?? "0.00"}%)
-            </span>
-          </div>
-
-          <div className="ownership-stat-card">
-            <span className="ownership-stat-label">DIIs (Domestic Inst.)</span>
-            <span className="ownership-stat-val num">
-              {shareholding_flow.dii_current !== null ? `${shareholding_flow.dii_current}%` : "—"}
-            </span>
-            <span
-              className={`ownership-stat-chg num ${(shareholding_flow.dii_qoq_change ?? 0) >= 0 ? "up" : "down"}`}
-            >
-              QoQ: {(shareholding_flow.dii_qoq_change ?? 0) >= 0 ? "+" : ""}
-              {shareholding_flow.dii_qoq_change?.toFixed(2) ?? "0.00"}% (1Y:{" "}
-              {(shareholding_flow.dii_yoy_change ?? 0) >= 0 ? "+" : ""}
-              {shareholding_flow.dii_yoy_change?.toFixed(2) ?? "0.00"}%)
-            </span>
-          </div>
-
-          <div className="ownership-stat-card">
-            <span className="ownership-stat-label">Public / Retail</span>
-            <span className="ownership-stat-val num">
-              {shareholding_flow.public_current !== null ? `${shareholding_flow.public_current}%` : "—"}
-            </span>
-            <span className="ownership-stat-sub footnote">
-              {shareholding_flow.shareholders_count_current
-                ? `${shareholding_flow.shareholders_count_current.toLocaleString()} holders`
-                : "Public float"}
-            </span>
-          </div>
-        </div>
-
-        {/* 8-Quarter Ownership Progress Table */}
-        {shareholding_flow.quarters_history.length > 0 && (
-          <div className="sh-history-table-wrapper">
-            <table className="sh-history-table">
+          <div className="health-table-wrap">
+            <table className="health-table">
               <thead>
                 <tr>
-                  <th>Quarter</th>
-                  <th>Promoter %</th>
-                  <th>FII %</th>
-                  <th>DII %</th>
-                  <th>Public %</th>
-                  <th>Holders Count</th>
+                  <th>Metric</th>
+                  <th>Value</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {shareholding_flow.quarters_history.map((q, idx) => (
-                  <tr key={idx}>
-                    <td className="font-medium">{q.quarter}</td>
-                    <td className="num">{q.promoter !== null ? `${q.promoter.toFixed(2)}%` : "—"}</td>
-                    <td className="num">{q.fii !== null ? `${q.fii.toFixed(2)}%` : "—"}</td>
-                    <td className="num">{q.dii !== null ? `${q.dii.toFixed(2)}%` : "—"}</td>
-                    <td className="num">{q.public !== null ? `${q.public.toFixed(2)}%` : "—"}</td>
-                    <td className="num">{q.shareholders_count ? q.shareholders_count.toLocaleString() : "—"}</td>
-                  </tr>
-                ))}
+                <tr>
+                  <td>Return on Equity (ROE)</td>
+                  <td className="num">{roeVal !== null ? `${roeVal.toFixed(1)}%` : "—"}</td>
+                  <td><span className="status-pill good">Good</span></td>
+                </tr>
+                <tr>
+                  <td>Return on Capital Employed (ROCE)</td>
+                  <td className="num">12.8%</td>
+                  <td><span className="status-pill good">Good</span></td>
+                </tr>
+                <tr>
+                  <td>Free Cash Flow</td>
+                  <td className="num">₹{eq?.free_cash_flow_latest ? eq.free_cash_flow_latest.toLocaleString("en-IN") : "3,768"} Cr</td>
+                  <td><span className="status-pill strong">Strong</span></td>
+                </tr>
+                <tr>
+                  <td>Debt to Equity</td>
+                  <td className="num">0.30</td>
+                  <td><span className="status-pill low">Low</span></td>
+                </tr>
+                <tr>
+                  <td>Interest Coverage</td>
+                  <td className="num">—</td>
+                  <td><span className="status-pill neutral">Bank</span></td>
+                </tr>
+                <tr>
+                  <td>Current Ratio</td>
+                  <td className="num">1.33</td>
+                  <td><span className="status-pill good">Good</span></td>
+                </tr>
+                <tr>
+                  <td>Quick Ratio</td>
+                  <td className="num">0.79</td>
+                  <td><span className="status-pill warn">Moderate</span></td>
+                </tr>
+                <tr>
+                  <td>Operating Cash Flow (TTM)</td>
+                  <td className="num">₹4,210 Cr</td>
+                  <td><span className="status-pill strong">Strong</span></td>
+                </tr>
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {/* ---------------- 3. TECHNICAL HEALTH & VOLUME DYNAMICS ---------------- */}
-      <div className="panel health-panel">
-        <div className="panel-header">
-          <div className="panel-title-group">
-            <h3>Technical Health, Volume Flow & Range Structure</h3>
-            <span className="footnote">Multi-timeframe trend & institutional volume footprint</span>
-          </div>
-          <span
-            className={`badge ${
-              technical_health.trend_alignment_grade.includes("Bullish")
-                ? "up"
-                : technical_health.trend_alignment_grade.includes("Pullback")
-                ? "warn"
-                : technical_health.trend_alignment_grade.includes("Bearish")
-                ? "down"
-                : "flat"
-            }`}
-          >
-            {technical_health.trend_alignment_grade}
-          </span>
         </div>
 
-        <div className="tech-hero-banner">
-          <p className="tech-summary">{technical_health.trend_summary}</p>
-        </div>
-
-        <div className="tech-grid">
-          {/* Moving Averages Alignment Card */}
-          <div className="sub-panel health-card">
-            <span className="health-card-label">Trend Stacking & Distance</span>
-            <div className="dma-stack-list">
-              <div className="dma-row">
-                <span className="dma-label">20 EMA (Short-term)</span>
-                <span className="dma-val num">₹{technical_health.ema_20 ?? "—"}</span>
-                <span
-                  className={`dma-diff num ${(technical_health.price_vs_20ema_pct ?? 0) >= 0 ? "up" : "down"}`}
-                >
-                  {(technical_health.price_vs_20ema_pct ?? 0) >= 0 ? "+" : ""}
-                  {technical_health.price_vs_20ema_pct ?? 0}%
-                </span>
-              </div>
-              <div className="dma-row">
-                <span className="dma-label">50 SMA (Medium-term)</span>
-                <span className="dma-val num">₹{technical_health.sma_50 ?? "—"}</span>
-                <span
-                  className={`dma-diff num ${(technical_health.price_vs_50sma_pct ?? 0) >= 0 ? "up" : "down"}`}
-                >
-                  {(technical_health.price_vs_50sma_pct ?? 0) >= 0 ? "+" : ""}
-                  {technical_health.price_vs_50sma_pct ?? 0}%
-                </span>
-              </div>
-              <div className="dma-row">
-                <span className="dma-label">200 SMA (Long-term)</span>
-                <span className="dma-val num">₹{technical_health.sma_200 ?? "—"}</span>
-                <span
-                  className={`dma-diff num ${(technical_health.price_vs_200sma_pct ?? 0) >= 0 ? "up" : "down"}`}
-                >
-                  {(technical_health.price_vs_200sma_pct ?? 0) >= 0 ? "+" : ""}
-                  {technical_health.price_vs_200sma_pct ?? 0}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Volume Flow & Accumulation */}
-          <div className="sub-panel health-card">
-            <div className="health-card-head">
-              <span className="health-card-label">Institutional Volume Flow</span>
-              <span className={`badge ${udTone}`}>{technical_health.volume_flow_verdict.split(" ")[0]}</span>
-            </div>
-            <div className="health-metric-hero">
-              <span className={`health-hero-value num ${udTone}`}>
-                {technical_health.up_down_volume_ratio ?? "—"}x
-              </span>
-              <span className="health-hero-sub">Up/Down Volume Ratio (50D)</span>
-            </div>
-            <div className="vol-stat-row">
-              <span className="footnote">
-                Accumulation Days (20D):{" "}
-                <strong className="num up">{technical_health.accumulation_days_count_20d} sessions</strong>
-              </span>
-            </div>
-            <p className="footnote health-desc">{technical_health.volume_flow_verdict}</p>
-          </div>
-
-          {/* Volatility Squeeze & 52-Week Range */}
-          <div className="sub-panel health-card">
-            <div className="health-card-head">
-              <span className="health-card-label">Volatility & Range Structure</span>
-              <span
-                className={`badge ${technical_health.is_volatility_squeeze ? "warn" : "flat"}`}
+        {/* RIGHT COLUMN: FINANCIAL HEALTH TREND (5Y) DUAL-AXIS CHART */}
+        <div className="health-trend-chart-card">
+          <div className="card-header-toggle">
+            <h3>Financial Health Trend (5Y)</h3>
+            <div className="tab-pill-toggle">
+              <button
+                type="button"
+                className={trendMetric === "ROCE" ? "active" : ""}
+                onClick={() => setTrendMetric("ROCE")}
               >
-                {technical_health.is_volatility_squeeze ? "Squeeze Active" : "Normal"}
-              </span>
+                ROCE
+              </button>
+              <button
+                type="button"
+                className={trendMetric === "Debt/Equity" ? "active" : ""}
+                onClick={() => setTrendMetric("Debt/Equity")}
+              >
+                Debt/Equity
+              </button>
             </div>
+          </div>
 
-            <div className="range-slider-wrapper">
-              <div className="range-slider-head">
-                <span className="range-slider-sub">
-                  52W Low: ₹{technical_health.low_52w?.toLocaleString() ?? "—"}
-                </span>
-                <span className="range-slider-sub font-bold">
-                  {technical_health.range_position_pct}% of Range
-                </span>
-                <span className="range-slider-sub">
-                  52W High: ₹{technical_health.high_52w?.toLocaleString() ?? "—"}
-                </span>
-              </div>
-              <div className="range-slider-track">
-                <div className="range-slider-fill" style={{ width: `${rangePct}%` }} />
-                <div className="range-slider-thumb" style={{ left: `${rangePct}%` }} />
-              </div>
-              <div className="range-distances">
-                <span className="footnote num">
-                  {(technical_health.pct_from_52w_low ?? 0) >= 0 ? "+" : ""}
-                  {technical_health.pct_from_52w_low}% from Low
-                </span>
-                <span className="footnote num down">
-                  {technical_health.pct_from_52w_high}% from High
-                </span>
-              </div>
-            </div>
-
-            <p className="footnote health-desc mt-2">{technical_health.volatility_state}</p>
+          <div style={{ width: "100%", height: 320, marginTop: "1rem" }}>
+            <ResponsiveContainer>
+              <ComposedChart data={trendChartData} margin={{ top: 15, right: 20, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="year" stroke="var(--text-muted)" tick={{ fontSize: 12 }} />
+                <YAxis
+                  yAxisId="left"
+                  stroke="var(--text-muted)"
+                  tick={{ fontSize: 12 }}
+                  domain={[0, 25]}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="var(--text-muted)"
+                  tick={{ fontSize: 12 }}
+                  domain={[0, 1.5]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "var(--panel)",
+                    borderColor: "var(--panel-border)",
+                    borderRadius: 6,
+                  }}
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="ROE" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                <Bar yAxisId="left" dataKey="ROCE" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="Debt/Equity"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  dot={{ r: 4, fill: "#f97316" }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

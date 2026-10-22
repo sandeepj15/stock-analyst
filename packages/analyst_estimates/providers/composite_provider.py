@@ -111,10 +111,11 @@ class CompositeAnalystEstimateProvider:
                 extra={"symbol": symbol, "exchange": exchange, "field": field, "fallback_source": fallback_result.source},
             )
 
-        # Recommendation fields are never sourced from TradingView
-        # (verified to not genuinely exist there) - always yfinance's,
-        # when available.
         for field in RECOMMENDATION_FIELDS:
+            current_value = values.get(field)
+            if current_value is not None:
+                field_sources.setdefault(field, primary_result.source)
+                continue
             if fallback_result is None:
                 continue
             fallback_value = getattr(fallback_result, field, None)
@@ -182,6 +183,10 @@ class CompositeAnalystEstimateProvider:
                 field_sources[field] = fallback_result.source
                 
             for field in RECOMMENDATION_FIELDS:
+                current_value = values.get(field)
+                if current_value is not None:
+                    field_sources.setdefault(field, primary_result.source)
+                    continue
                 if fallback_result is None:
                     continue
                 fallback_value = getattr(fallback_result, field, None)

@@ -39,6 +39,7 @@ def latest_research_score_subquery() -> Subquery:
             ResearchScore.instrument_id.label("instrument_id"),
             ResearchScore.score.label("score"),
             ResearchScore.confidence.label("confidence"),
+            ResearchScore.components.label("components"),
             ResearchScore.computed_at.label("computed_at"),
         )
         .distinct(ResearchScore.instrument_id)
@@ -236,6 +237,25 @@ def latest_vcp_subquery() -> Subquery:
         )
         .distinct(VcpScan.instrument_id)
         .order_by(VcpScan.instrument_id, VcpScan.computed_at.desc())
+        .subquery()
+    )
+
+
+def latest_institutional_holdings_subquery() -> Subquery:
+    """One row per instrument: latest FII, DII, and promoter holdings and QoQ changes."""
+    from packages.fundamentals.models import InstitutionalHolding
+    return (
+        select(
+            InstitutionalHolding.instrument_id.label("instrument_id"),
+            InstitutionalHolding.latest_quarter.label("latest_quarter"),
+            InstitutionalHolding.fii_current.label("fii_current"),
+            InstitutionalHolding.fii_qoq_change.label("fii_qoq_change"),
+            InstitutionalHolding.dii_current.label("dii_current"),
+            InstitutionalHolding.dii_qoq_change.label("dii_qoq_change"),
+            InstitutionalHolding.promoter_current.label("promoter_current"),
+            InstitutionalHolding.promoter_qoq_change.label("promoter_qoq_change"),
+            InstitutionalHolding.public_current.label("public_current"),
+        )
         .subquery()
     )
 

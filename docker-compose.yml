@@ -43,6 +43,11 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yfinance_dev}
+      SCREENER_SESSION_ID: ${SCREENER_SESSION_ID:-}
+      SCREENER_CSRF_TOKEN: ${SCREENER_CSRF_TOKEN:-}
+    volumes:
+      - ./apps:/app/apps
+      - ./packages:/app/packages
     ports:
       - "8000:8000"
     depends_on:
@@ -51,11 +56,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health/db || exit 1"]
-      interval: 5s
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 5
+      start_period: 10s
 
   worker:
     build:
@@ -70,6 +75,11 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-yfinance_dev}
+      SCREENER_SESSION_ID: ${SCREENER_SESSION_ID:-}
+      SCREENER_CSRF_TOKEN: ${SCREENER_CSRF_TOKEN:-}
+    volumes:
+      - ./apps:/app/apps
+      - ./packages:/app/packages
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,10 +94,15 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     restart: unless-stopped
+    command: ["pnpm", "run", "start"]
     environment:
       API_URL: http://api:8000
       PORT: 3000
       HOSTNAME: "0.0.0.0"
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
     ports:
       - "3000:3000"
     depends_on:

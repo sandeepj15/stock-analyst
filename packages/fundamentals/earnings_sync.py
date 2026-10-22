@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.common.config import get_settings
 from packages.common.models import Instrument
 from packages.fundamentals.models import FundamentalSnapshot, RawProviderScrape, StructuredProviderData
 from packages.fundamentals.providers.screener_in_provider import (
@@ -43,7 +44,25 @@ from packages.scoring.engine import compute_research_score
 logger = logging.getLogger(__name__)
 
 BSE_FEED_URL = "https://www.bseindia.com/Data/XML/FinancialResultsFeed.aspx"
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+
+
+def _screener_request_context() -> tuple[dict[str, str], dict[str, str]]:
+    """Return realistic browser headers and authenticated cookies for screener.in."""
+    settings = get_settings()
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+    }
+    cookies: dict[str, str] = {}
+    if settings.SCREENER_SESSION_ID:
+        cookies["sessionid"] = settings.SCREENER_SESSION_ID
+    if settings.SCREENER_CSRF_TOKEN:
+        cookies["csrftoken"] = settings.SCREENER_CSRF_TOKEN
+    return headers, cookies
 
 
 @dataclass
@@ -106,33 +125,98 @@ def fetch_bse_financial_results_feed() -> list[BseAnnouncement]:
     return announcements
 
 
+def fetch_screener_latest_results_feed() -> list[BseAnnouncement]:
+    """Fetch recently declared results directly from Screener.in's /results/latest/ feed."""
+    headers, cookies = _screener_request_context()
+    url = "https://www.screener.in/results/latest/"
+    announcements: list[BseAnnouncement] = []
+    try:
+        with httpx.Client(follow_redirects=True, timeout=15.0) as client:
+            resp = client.get(url, headers=headers, cookies=cookies)
+            if resp.status_code != 200:
+                logger.warning(f"Screener /results/latest/ returned status {resp.status_code}")
+                return []
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for a in soup.find_all("a", href=re.compile(r"^/company/([^/]+)/")):
+                href = a["href"]
+                m = re.match(r"^/company/([^/]+)/", href)
+                if not m:
+                    continue
+                sym = m.group(1).upper()
+                if sym in ("COMPARE", "SOURCE"):
+                    continue
+                company_name = a.get_text(strip=True)
+                clean_name = re.sub(r"\b(Ltd|Limited|LTD)\b\.?", "", company_name).strip()
+
+                period_end = None
+                parent = a.find_parent("div")
+                if parent:
+                    pdf_link = parent.find("a", href=re.compile(r"/company/source/quarter/\d+/(\d+)/(\d+)/"))
+                    if pdf_link:
+                        pm = re.search(r"/company/source/quarter/\d+/(\d+)/(\d+)/", pdf_link["href"])
+                        if pm:
+                            m_idx, y_idx = int(pm.group(1)), int(pm.group(2))
+                            from calendar import monthrange
+                            _, last_day = monthrange(y_idx, m_idx)
+                            period_end = date(y_idx, m_idx, last_day)
+
+                announcements.append(
+                    BseAnnouncement(
+                        company_name=company_name,
+                        clean_name=clean_name,
+                        bse_code=sym,
+                        period_end=period_end,
+                    )
+                )
+    except Exception as exc:
+        logger.warning(f"Failed to fetch Screener latest results feed: {exc}")
+
+    return announcements
+
+
 def fetch_live_screener_soup(symbol: str) -> tuple[BeautifulSoup | None, str | None, str | None, bool]:
-    """Fetch live HTML from Screener.in for a symbol, trying consolidated first then standalone.
+    """Fetch live HTML from Screener.in for a symbol using authenticated cookies, choosing the freshest page between consolidated and standalone.
     
     Returns (soup, html_text, final_url, is_rate_limited)
     """
+    headers, cookies = _screener_request_context()
+    candidates = []
     with httpx.Client(follow_redirects=True, timeout=15.0) as client:
         for path in (f"/company/{symbol.upper()}/consolidated/", f"/company/{symbol.upper()}/"):
             url = f"https://www.screener.in{path}"
             try:
-                resp = client.get(url, headers={"User-Agent": USER_AGENT})
+                resp = client.get(url, headers=headers, cookies=cookies)
                 if resp.status_code == 429:
                     logger.warning(f"Screener rate-limited (429) on {url}")
                     return None, None, None, True
                 if resp.status_code == 200:
                     text = resp.text
-                    # Check if quarters table exists with period headers
                     if 'id="quarters"' in text:
-                        return BeautifulSoup(text, "html.parser"), text, url, False
+                        soup = BeautifulSoup(text, "html.parser")
+                        q_sec = soup.find("section", id="quarters")
+                        if q_sec:
+                            rows = _parse_quarterly_table(q_sec)
+                            if rows:
+                                latest_p = max(r["period_end"] for r in rows)
+                                candidates.append((latest_p, soup, text, url))
             except Exception as exc:
                 logger.warning(f"Failed to fetch {url}: {exc}")
+
+    if candidates:
+        # Sort by freshest latest period_end; prefer consolidated on ties
+        candidates.sort(key=lambda x: (x[0], "consolidated" in x[3]), reverse=True)
+        best = candidates[0]
+        return best[1], best[2], best[3], False
+
     return None, None, None, False
 
 
 async def sync_recent_earnings(session: AsyncSession) -> dict[str, Any]:
-    """Identify new earnings declarations from BSE feed and ingest if verified on Screener."""
+    """Identify new earnings declarations from BSE and Screener feeds and ingest if verified on Screener."""
     feed_items = fetch_bse_financial_results_feed()
-    if not feed_items:
+    screener_items = fetch_screener_latest_results_feed()
+    all_feed_items = feed_items + screener_items
+    if not all_feed_items:
         return {"status": "no_feed_items", "updated": [], "skipped": []}
 
     # Fetch active instruments
@@ -150,20 +234,26 @@ async def sync_recent_earnings(session: AsyncSession) -> dict[str, Any]:
     matches: list[tuple[Instrument, date]] = []
     seen_pairs: set[tuple[str, date]] = set()
 
-    for item in feed_items:
+    for item in all_feed_items:
         if not item.period_end:
             continue
 
         matched_inst = None
-        key = item.clean_name.lower()
-        if key in inst_lookup:
-            matched_inst = inst_lookup[key]
-        else:
-            # Substring matching for longer names
-            for ik, iv in inst_lookup.items():
-                if len(key) >= 6 and (key in ik or ik in key):
-                    matched_inst = iv
-                    break
+        # Direct symbol match (e.g. YESBANK, ICICIBANK)
+        code_key = item.bse_code.lower()
+        if code_key in inst_lookup:
+            matched_inst = inst_lookup[code_key]
+
+        if not matched_inst:
+            key = item.clean_name.lower()
+            if key in inst_lookup:
+                matched_inst = inst_lookup[key]
+            else:
+                # Substring matching for longer names
+                for ik, iv in inst_lookup.items():
+                    if len(key) >= 6 and (key in ik or ik in key):
+                        matched_inst = iv
+                        break
 
         if matched_inst:
             pair_key = (matched_inst.symbol, item.period_end)
@@ -171,7 +261,7 @@ async def sync_recent_earnings(session: AsyncSession) -> dict[str, Any]:
                 seen_pairs.add(pair_key)
                 matches.append((matched_inst, item.period_end))
 
-    logger.info(f"BSE feed matched {len(matches)} announcements to active equity universe.")
+    logger.info(f"Feeds matched {len(matches)} announcements to active equity universe.")
 
     updated: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -289,6 +379,11 @@ async def sync_recent_earnings(session: AsyncSession) -> dict[str, Any]:
             )
             session.add(raw_scrape)
             await session.flush()
+
+            import re
+            logo_match = re.search(r'https://cdn-media\.screener\.in/company-logos/[^"\'\s<>]+', html_text)
+            if logo_match:
+                inst.logo_url = logo_match.group(0)
 
             from scripts.parse_structured_screener import parse_screener_html
             structured_data = parse_screener_html(html_text)

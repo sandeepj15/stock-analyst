@@ -8,9 +8,20 @@ interface Props {
   momentum: MomentumScanResponse | null;
   analystRating: AnalystRatingResponse | null;
   price: number | null;
+  tvSignal1d?: string | null;
+  tvSignal1w?: string | null;
+  tvMomentumFlag?: string | null;
 }
 
-export default function StockHeroTiles({ score, momentum, analystRating, price }: Props) {
+export default function StockHeroTiles({
+  score,
+  momentum,
+  analystRating,
+  price,
+  tvSignal1d,
+  tvSignal1w,
+  tvMomentumFlag,
+}: Props) {
   // 1. Research Score calculations
   const scoreVal = score?.score !== null && score?.score !== undefined ? Math.round(score.score) : null;
   const scoreColor = score ? bandColor(score.band) : "var(--text-muted)";
@@ -85,21 +96,53 @@ export default function StockHeroTiles({ score, momentum, analystRating, price }
         </div>
       </div>
 
-      {/* TILE 2: STAGE 2 MOMENTUM */}
+      {/* TILE 2: STAGE 2 MOMENTUM & TRADINGVIEW */}
       <div className="stock-hero-tile">
         <div className="hero-tile-header">
           <span className="hero-tile-title">
-            <span className="hero-tile-icon">⚡</span> Stage 2 Momentum
+            <span className="hero-tile-icon">⚡</span> Momentum &amp; Trend
           </span>
-          {isEvaluated ? (
-            <span
-              className={`hero-tile-badge ${isStage2Pass ? "badge-pass" : "badge-neutral"}`}
-            >
-              {isStage2Pass ? "✓ Confirmed Uptrend" : "Consolidating"}
-            </span>
-          ) : (
-            <span className="hero-tile-badge badge-neutral">Pending Bars</span>
-          )}
+          <div style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+            {tvMomentumFlag === "STRONG_BUY_BOTH" && (
+              <span className="tv-badge tv-strong-buy-both" title="TradingView 1D & 1W Strong Buy">
+                🔥 2x Strong Buy
+              </span>
+            )}
+            {tvMomentumFlag === "STRONG_BUY_1D" && (
+              <span className="tv-badge tv-strong-buy" title="TradingView 1D Strong Buy">
+                🟢 Strong Buy (1D)
+              </span>
+            )}
+            {tvMomentumFlag === "STRONG_BUY_1W" && (
+              <span className="tv-badge tv-strong-buy" title="TradingView 1W Strong Buy">
+                🟢 Strong Buy (1W)
+              </span>
+            )}
+            {tvMomentumFlag === "STRONG_SELL_BOTH" && (
+              <span className="tv-badge tv-strong-sell-both" title="TradingView 1D & 1W Strong Sell">
+                🚨 2x Strong Sell
+              </span>
+            )}
+            {tvMomentumFlag === "STRONG_SELL_1D" && (
+              <span className="tv-badge tv-strong-sell" title="TradingView 1D Strong Sell">
+                🔴 Strong Sell (1D)
+              </span>
+            )}
+            {tvMomentumFlag === "STRONG_SELL_1W" && (
+              <span className="tv-badge tv-strong-sell" title="TradingView 1W Strong Sell">
+                🔴 Strong Sell (1W)
+              </span>
+            )}
+            {isEvaluated ? (
+              <span
+                className={`hero-tile-badge ${isStage2Pass ? "badge-pass" : "badge-neutral"}`}
+              >
+                {isStage2Pass ? "✓ Confirmed Uptrend" : "Consolidating"}
+              </span>
+            ) : (
+              <span className="hero-tile-badge badge-neutral">Pending Bars</span>
+            )}
+          </div>
         </div>
 
         <div className="hero-tile-body">
@@ -116,7 +159,11 @@ export default function StockHeroTiles({ score, momentum, analystRating, price }
           <span className="hero-tile-pill">
             <strong>{conditionsMet}/{totalConditions}</strong> Conditions Met
           </span>
-          {rsRank !== null ? (
+          {tvSignal1d || tvSignal1w ? (
+            <span className="hero-tile-detail">
+              TV TA: <strong>{tvSignal1d ?? "NEUTRAL"}</strong> (1D) · <strong>{tvSignal1w ?? "NEUTRAL"}</strong> (1W)
+            </span>
+          ) : rsRank !== null ? (
             <span className="hero-tile-detail">
               RS Rank: <strong className="num">{rsRank}</strong>/100
               {typeof distFromHigh === "number" && (

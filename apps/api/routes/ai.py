@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from packages.ai.alpha_picks import generate_daily_ai_alpha_picks, get_latest_alpha_picks
 from packages.ai.vertex_service import (
     build_compact_stock_snapshot,
     sanitize_text,
@@ -122,3 +123,23 @@ async def stream_ai_chat(request: ChatRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/alpha-picks")
+async def get_ai_alpha_picks(force_refresh: bool = Query(default=False)) -> dict[str, Any]:
+    """Retrieves the latest daily multi-factor AI alpha picks and institutional explainability."""
+    try:
+        return await get_latest_alpha_picks(force_refresh=force_refresh)
+    except Exception as exc:
+        logger.error(f"Error fetching AI alpha picks: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=sanitize_text(str(exc)))
+
+
+@router.post("/alpha-picks/generate")
+async def trigger_generate_ai_alpha_picks() -> dict[str, Any]:
+    """Triggers on-demand generation of daily AI alpha picks via Vertex AI Gemini."""
+    try:
+        return await generate_daily_ai_alpha_picks()
+    except Exception as exc:
+        logger.error(f"Error generating AI alpha picks: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=sanitize_text(str(exc)))

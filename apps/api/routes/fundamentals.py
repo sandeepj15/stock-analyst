@@ -10,7 +10,10 @@ explicit state, not a silent gap.
 """
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+import statistics
+from collections import defaultdict
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -18,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.api.deps import resolve_instrument_or_404
+from packages.common.models import Instrument
 from packages.common.db import get_db_session
 from packages.fundamentals.derive import (
     asset_turnover,
@@ -39,7 +43,7 @@ from packages.fundamentals.derive import (
     roce_simplified,
     roe,
 )
-from packages.fundamentals.models import FundamentalSnapshot
+from packages.fundamentals.models import FundamentalSnapshot, StructuredProviderData
 from packages.market_data.history import load_ohlcv_dataframe
 from packages.scoring.bands import score_band
 from packages.scoring.constants import FUNDAMENTAL_SCORE_METHODOLOGY_VERSION
@@ -122,9 +126,62 @@ class ValuationMetricsOut(BaseModel):
     dividend_yield: float | None
     fcf_yield: float | None
     market_cap: float | None
+    market_cap_cr: float | None = None
+    industry_pe: float | None = None
     enterprise_value: float | None
     data_age_days: int | None
     stale: bool
+
+
+_INDUSTRY_PE_CACHE: dict[str, Any] = {"computed_at": None, "industry": {}, "sector": {}, "market": 24.0}
+_INDUSTRY_PE_CACHE_TTL = timedelta(hours=6)
+
+
+async def get_cached_industry_pe_map(session: AsyncSession) -> tuple[dict[str, float], dict[str, float], float]:
+    now = datetime.now(UTC)
+    cached_at = _INDUSTRY_PE_CACHE.get("computed_at")
+    if cached_at and (now - cached_at) < _INDUSTRY_PE_CACHE_TTL:
+        return _INDUSTRY_PE_CACHE["industry"], _INDUSTRY_PE_CACHE["sector"], _INDUSTRY_PE_CACHE["market"]
+
+    try:
+        stmt = select(
+            Instrument.sector,
+            Instrument.industry,
+            StructuredProviderData.data["top_ratios"]["stock_pe"].astext
+        ).join(
+            StructuredProviderData, StructuredProviderData.instrument_id == Instrument.id
+        ).where(
+            Instrument.active.is_(True),
+            StructuredProviderData.data["top_ratios"]["stock_pe"].isnot(None)
+        )
+        rows = (await session.execute(stmt)).all()
+        
+        ind_map = defaultdict(list)
+        sec_map = defaultdict(list)
+        all_pes = []
+        for sec, ind, pe_str in rows:
+            try:
+                pe_val = float(pe_str)
+                if 0 < pe_val < 300:
+                    all_pes.append(pe_val)
+                    if ind:
+                        ind_map[ind].append(pe_val)
+                    if sec:
+                        sec_map[sec].append(pe_val)
+            except (ValueError, TypeError):
+                continue
+
+        market_med = round(statistics.median(all_pes), 1) if all_pes else 24.0
+        ind_medians = {k: round(statistics.median(v), 1) for k, v in ind_map.items() if v}
+        sec_medians = {k: round(statistics.median(v), 1) for k, v in sec_map.items() if v}
+
+        _INDUSTRY_PE_CACHE["computed_at"] = now
+        _INDUSTRY_PE_CACHE["industry"] = ind_medians
+        _INDUSTRY_PE_CACHE["sector"] = sec_medians
+        _INDUSTRY_PE_CACHE["market"] = market_med
+        return ind_medians, sec_medians, market_med
+    except Exception:
+        return {}, {}, 24.0
 
 
 class FundamentalSubScoresOut(BaseModel):
@@ -330,6 +387,14 @@ async def get_fundamentals(
     session: AsyncSession = Depends(get_db_session),
 ) -> FundamentalsResponse:
     instrument = await resolve_instrument_or_404(session, symbol, exchange)
+    from packages.common import cache
+    cache_key = f"stock_fundamentals:v2:{instrument.id}"
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        try:
+            return FundamentalsResponse.model_validate(cached)
+        except Exception:
+            pass
     now = datetime.now(UTC)
 
     snapshots = await _latest_two_snapshots(session, instrument.id)
@@ -451,6 +516,22 @@ async def get_fundamentals(
         methodology_version=FUNDAMENTAL_SCORE_METHODOLOGY_VERSION,
     )
 
+    stmt_tr = (
+        select(StructuredProviderData.data)
+        .where(StructuredProviderData.instrument_id == instrument.id)
+        .order_by(StructuredProviderData.parsed_at.desc())
+        .limit(1)
+    )
+    spd_data = (await session.execute(stmt_tr)).scalar_one_or_none()
+    top_ratios = (spd_data.get("top_ratios") or {}) if isinstance(spd_data, dict) else {}
+
+    ind_medians, sec_medians, market_med = await get_cached_industry_pe_map(session)
+    ind_pe = (
+        ind_medians.get(instrument.industry or "")
+        or sec_medians.get(instrument.sector or "")
+        or market_med
+    )
+
     price_df = await load_ohlcv_dataframe(session, instrument.id)
     if not price_df.empty:
         close = float(price_df["adjusted_close"].iloc[-1])
@@ -469,25 +550,52 @@ async def get_fundamentals(
             dividend_yield=_f(latest.dividend_yield),
             stale_after_days=STALE_FUNDAMENTALS_AFTER_DAYS,
         )
+        stock_pe = top_ratios.get("stock_pe") or val.pe
+        mcap_cr = top_ratios.get("market_cap_cr") or ((val.market_cap / 10000000.0) if val.market_cap else None)
+        mcap_inr = (mcap_cr * 10000000.0) if mcap_cr is not None else val.market_cap
+
         valuation = ValuationMetricsOut(
-            pe=val.pe, pb=val.pb, ev_ebitda=val.ev_ebitda, ev_sales=val.ev_sales,
-            dividend_yield=val.dividend_yield, fcf_yield=val.fcf_yield, market_cap=val.market_cap,
-            enterprise_value=val.enterprise_value, data_age_days=val.data_age_days, stale=val.stale,
+            pe=stock_pe,
+            pb=top_ratios.get("book_value") or val.pb,
+            ev_ebitda=val.ev_ebitda,
+            ev_sales=val.ev_sales,
+            dividend_yield=top_ratios.get("dividend_yield_pct") or val.dividend_yield,
+            fcf_yield=val.fcf_yield,
+            market_cap=mcap_inr,
+            market_cap_cr=mcap_cr,
+            industry_pe=ind_pe,
+            enterprise_value=val.enterprise_value,
+            data_age_days=val.data_age_days,
+            stale=val.stale,
         )
-        derived.peg_ratio = peg_ratio(val.pe, eps_growth_yoy)
+        if stock_pe and pat_growth_yoy and pat_growth_yoy > 0:
+            derived.peg_ratio = round(stock_pe / (pat_growth_yoy * 100.0), 2)
+        elif stock_pe and eps_growth_yoy and eps_growth_yoy > 0:
+            derived.peg_ratio = round(stock_pe / (eps_growth_yoy * 100.0), 2)
+        else:
+            derived.peg_ratio = peg_ratio(val.pe, eps_growth_yoy)
     else:
-        # Fundamentals exist but there's no priced close yet to combine
-        # with them - every price*fundamentals valuation field is null,
-        # but dividend_yield (fundamentals-only) still comes through.
+        stock_pe = top_ratios.get("stock_pe")
+        mcap_cr = top_ratios.get("market_cap_cr")
+        mcap_inr = (mcap_cr * 10000000.0) if mcap_cr is not None else None
         valuation = ValuationMetricsOut(
-            pe=None, pb=None, ev_ebitda=None, ev_sales=None, dividend_yield=_f(latest.dividend_yield),
-            fcf_yield=None, market_cap=None, enterprise_value=None,
-            data_age_days=age_days, stale=age_days > STALE_FUNDAMENTALS_AFTER_DAYS,
+            pe=stock_pe,
+            pb=top_ratios.get("book_value"),
+            ev_ebitda=None,
+            ev_sales=None,
+            dividend_yield=top_ratios.get("dividend_yield_pct") or _f(latest.dividend_yield),
+            fcf_yield=None,
+            market_cap=mcap_inr,
+            market_cap_cr=mcap_cr,
+            industry_pe=ind_pe,
+            enterprise_value=None,
+            data_age_days=age_days,
+            stale=age_days > STALE_FUNDAMENTALS_AFTER_DAYS,
         )
 
     quarterly = _build_quarterly_response(quarterly_snapshots, now)
 
-    return FundamentalsResponse(
+    resp = FundamentalsResponse(
         symbol=instrument.symbol,
         exchange=instrument.exchange,
         as_of=now.isoformat(),
@@ -499,6 +607,8 @@ async def get_fundamentals(
         fundamental_score=fundamental_score,
         quarterly=quarterly,
     )
+    await cache.set_json(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+    return resp
 
 @router.get("/{symbol}/structured")
 async def get_structured_data(
@@ -507,6 +617,12 @@ async def get_structured_data(
     session: AsyncSession = Depends(get_db_session),
 ):
     instrument = await resolve_instrument_or_404(session, symbol, exchange)
+    from packages.common import cache
+    cache_key = f"stock_structured:v2:{instrument.id}"
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     from packages.fundamentals.models import StructuredProviderData
     stmt = (
         select(StructuredProviderData.data)
@@ -515,7 +631,7 @@ async def get_structured_data(
         .limit(1)
     )
     data = (await session.execute(stmt)).scalar_one_or_none()
-    if not data:
-        return {"has_data": False, "data": None}
-    return {"has_data": True, "data": data}
+    res = {"has_data": False, "data": None} if not data else {"has_data": True, "data": data}
+    await cache.set_json(cache_key, res, ttl_seconds=600)
+    return res
 

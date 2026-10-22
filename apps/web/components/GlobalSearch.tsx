@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { listInstruments } from "../lib/api";
+import { listInstruments, prefetchStock } from "../lib/api";
+import { saveStockSummary } from "../lib/stockSummaryCache";
 import { InstrumentSummary } from "../lib/types";
 
 export default function GlobalSearch() {
@@ -27,24 +28,51 @@ export default function GlobalSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = query.trim() === "" 
+  const trimmed = query.trim().toLowerCase();
+  const filtered = trimmed === "" 
     ? [] 
-    : instruments.filter(
-        (inst) =>
-          inst.symbol.toLowerCase().includes(query.toLowerCase()) ||
-          inst.company_name.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 8); // limit to top 8 suggestions
+    : instruments
+        .filter(
+          (inst) =>
+            inst.symbol.toLowerCase().includes(trimmed) ||
+            inst.company_name.toLowerCase().includes(trimmed)
+        )
+        .sort((a, b) => {
+          const aSym = a.symbol.toLowerCase();
+          const bSym = b.symbol.toLowerCase();
+          if (aSym === trimmed && bSym !== trimmed) return -1;
+          if (aSym !== trimmed && bSym === trimmed) return 1;
+          if (aSym.startsWith(trimmed) && !bSym.startsWith(trimmed)) return -1;
+          if (!aSym.startsWith(trimmed) && bSym.startsWith(trimmed)) return 1;
+          const aName = a.company_name.toLowerCase();
+          const bName = b.company_name.toLowerCase();
+          if (aName.startsWith(trimmed) && !bName.startsWith(trimmed)) return -1;
+          if (!aName.startsWith(trimmed) && bName.startsWith(trimmed)) return 1;
+          return aSym.localeCompare(bSym);
+        })
+        .slice(0, 8); // limit to top 8 suggestions
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && filtered.length > 0) {
+      const topInst = filtered[0];
+      setQuery("");
+      setIsOpen(false);
+      saveStockSummary(topInst);
+      router.push(`/stocks/${topInst.symbol}`);
+    }
+  };
 
   return (
     <div ref={wrapperRef} style={{ position: "relative", marginLeft: "20px", flex: 1, maxWidth: "400px" }}>
       <input
         type="text"
-        placeholder="Search stocks..."
+        placeholder="Search stocks (e.g. RELIANCE, TCS)..."
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setIsOpen(true);
         }}
+        onKeyDown={handleKeyDown}
         onFocus={() => setIsOpen(true)}
         style={{
           width: "100%",
@@ -78,6 +106,7 @@ export default function GlobalSearch() {
               onClick={() => {
                 setQuery("");
                 setIsOpen(false);
+                saveStockSummary(inst);
                 router.push(`/stocks/${inst.symbol}`);
               }}
               style={{
@@ -87,7 +116,12 @@ export default function GlobalSearch() {
                 display: "flex",
                 flexDirection: "column"
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-muted)")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--bg-muted)";
+                saveStockSummary(inst);
+                router.prefetch(`/stocks/${inst.symbol}`);
+                prefetchStock(inst.symbol);
+              }}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
               <span style={{ fontWeight: "bold" }}>{inst.symbol}</span>

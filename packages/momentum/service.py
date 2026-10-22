@@ -68,6 +68,8 @@ class MomentumScanResponse(BaseModel):
     methodology_version: str
     computed_at: str
     reason: str | None
+    is_vcp_setup: bool | None = None
+    vcp_reason: str | None = None
     # Never itself cached (always set per-response, defaults to False for
     # any freshly-computed result) - see the "Redis caching" comment
     # below. `scan_date`/`computed_at` above always reflect when the

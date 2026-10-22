@@ -1,4 +1,5 @@
 import type { BullBearEntry, BullBearStrength } from "../lib/types";
+import { formatCrispBullBear } from "../lib/bullBearFormatter";
 
 // SPEC.md section 24, scoped down: deterministic, evidence-linked bullet
 // lists - NOT the full AI bull/bear case (no LLM, no narrative text).
@@ -28,12 +29,24 @@ function List({ entries, tone }: { entries: BullBearEntry[]; tone: "up" | "down"
   }
   return (
     <ul>
-      {entries.map((entry) => (
-        <li key={entry.evidence_id} className={`strength-row strength-row-${entry.strength}`}>
-          <StrengthBadge strength={entry.strength} tone={tone} />
-          <span>{entry.interpretation}</span>
-        </li>
-      ))}
+      {entries.map((entry) => {
+        const crisp = formatCrispBullBear(entry, tone);
+        return (
+          <li
+            key={entry.evidence_id}
+            className={`strength-row strength-row-${entry.strength}`}
+            title={entry.interpretation}
+          >
+            <div className="bull-bear-item-left">
+              <StrengthBadge strength={entry.strength} tone={tone} />
+              <span className="bull-bear-indicator">{crisp.condition}</span>
+            </div>
+            <span className={`bull-bear-verdict-badge ${crisp.verdict === "Good" ? "good" : "bad"}`}>
+              {crisp.verdict === "Good" ? "✓ Good" : "✗ Bad"}
+            </span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -44,7 +57,7 @@ export default function BullBearPanel({ bullCase, bearCase }: { bullCase: BullBe
       <h2>Bull case / Bear case</h2>
       <p className="footnote">
         Key positive and negative drivers deterministically derived from the stock's signals. 
-        Each point's strength directly reflects its impact on the final Research Score.
+        Each point's strength directly reflects its impact on the final Research Score. Hover for full evidence.
       </p>
       <div className="bull-bear-grid" style={{ marginTop: "0.75rem" }}>
         <div>

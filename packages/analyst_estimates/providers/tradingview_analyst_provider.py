@@ -80,9 +80,23 @@ _ANALYST_COLUMNS = (
     "price_target_high",
     "price_target_low",
     "price_target_1y",
+    "recommendation_mark",
 )
 
 _RETRY_POLICY = RetryPolicy(max_attempts=3, base_delay_seconds=1.5, max_delay_seconds=6.0)
+
+
+def to_recommendation_key(mark: float | None) -> str | None:
+    """Map TradingView consensus analyst recommendation mark [1.0 to 3.0] to TradingView's 4 signals."""
+    if mark is None:
+        return None
+    if mark < 1.25:
+        return "strong_buy"
+    if mark < 2.25:
+        return "buy"
+    if mark < 2.75:
+        return "sell"
+    return "strong_sell"
 
 
 def _safe_float(value: Any) -> float | None:
@@ -167,19 +181,22 @@ class TradingViewAnalystEstimateProvider:
                 # 2: price_target_high
                 # 3: price_target_low
                 # 4: price_target_1y
+                # 5: recommendation_mark
                 target_mean = _safe_float(d[0]) or _safe_float(d[4])
                 target_median = _safe_float(d[1])
                 target_high = _safe_float(d[2])
                 target_low = _safe_float(d[3])
+                rec_mark = _safe_float(d[5]) if len(d) > 5 else None
 
                 inst = tv_symbol_to_inst.get(tv_key)
                 if not inst:
                     continue
 
-                if all(v is None for v in (target_mean, target_median, target_high, target_low)):
+                if all(v is None for v in (target_mean, target_median, target_high, target_low, rec_mark)):
                     results[inst] = None
                     continue
 
+                rec_key = to_recommendation_key(rec_mark)
                 results[inst] = AnalystEstimateData(
                     symbol=inst[0].upper(),
                     exchange=inst[1].upper(),
@@ -187,8 +204,8 @@ class TradingViewAnalystEstimateProvider:
                     target_high_price=target_high,
                     target_low_price=target_low,
                     target_median_price=target_median,
-                    recommendation_mean=None,
-                    recommendation_key=None,
+                    recommendation_mean=rec_mark,
+                    recommendation_key=rec_key,
                     number_of_analyst_opinions=None,
                     source=SOURCE_NAME,
                     source_timestamp=datetime.now(UTC),

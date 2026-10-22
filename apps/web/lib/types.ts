@@ -10,6 +10,7 @@ export interface InstrumentSummary {
   symbol: string;
   exchange: string;
   company_name: string;
+  logo_url?: string | null;
   sector: string | null;
   instrument_type: string;
   active: boolean;
@@ -19,13 +20,16 @@ export interface InstrumentSummary {
   score: number | null;
   confidence: number | null;
   band: string | null;
+  fundamental_score: number | null;
+  fundamental_band: string | null;
+  is_multibagger: boolean | null;
   // Most recently persisted momentum_scans row at the default lookback
   // (apps/worker/jobs.py :: compute_all_momentum_scans_job) - null until
   // that batch job has run, or when the stock has insufficient history
   // to evaluate (never a fabricated true/false either way).
   momentum_pass: boolean | null;
   is_vcp_setup: boolean | null;
-
+  is_52w_breakout?: boolean | null;
   distance_from_52w_high_pct: number | null;
   // Day-over-day % price change (apps/api/routes/instruments.py's
   // single window-function query) - null when an instrument has fewer
@@ -46,6 +50,11 @@ export interface InstrumentSummary {
   analyst_recommendation: string | null;
   revenue_growth_yoy: number | null;
   pat_growth_yoy: number | null;
+  tv_signal_1d?: string | null;
+  tv_signal_1w?: string | null;
+  tv_momentum_flag?: string | null;
+  fii_current?: number | null;
+  fii_change_qoq_pct?: number | null;
 }
 
 export type InstrumentSortKey =
@@ -53,9 +62,14 @@ export type InstrumentSortKey =
   | "company_name"
   | "sector"
   | "score"
+  | "fundamental_score"
+  | "is_multibagger"
   | "momentum_pass"
   | "is_vcp_setup"
+  | "distance_from_52w_high_pct"
+  | "tv_momentum_flag"
   | "analyst_upside_pct"
+  | "analyst_recommendation"
   | "ml_forecast_5d_pct"
   | "day_change_pct"
   | "return_1w_pct"
@@ -64,7 +78,9 @@ export type InstrumentSortKey =
   | "return_6m_pct"
   | "return_1y_pct"
   | "revenue_growth_yoy"
-  | "pat_growth_yoy";
+  | "pat_growth_yoy"
+  | "fii_current"
+  | "fii_change_qoq_pct";
 export type SortOrder = "asc" | "desc";
 
 export interface SortCriterion {
@@ -93,6 +109,7 @@ export interface PriceResponse {
   symbol: string;
   exchange: string;
   company_name?: string | null;
+  logo_url?: string | null;
   sector?: string | null;
   industry?: string | null;
   description?: string | null;
@@ -104,6 +121,10 @@ export interface PriceResponse {
   end_date: string | null;
   bars: PriceBar[];
   data_freshness: DataFreshness;
+  high_52w?: number | null;
+  low_52w?: number | null;
+  is_52w_breakout?: boolean;
+  breakout_pct?: number | null;
 }
 
 export interface IndicatorSnapshot {
@@ -164,6 +185,9 @@ export interface TechnicalsResponse {
   snapshot: IndicatorSnapshot;
   series: IndicatorSeries;
   data_freshness: DataFreshness;
+  tv_signal_1d?: string | null;
+  tv_signal_1w?: string | null;
+  tv_momentum_flag?: string | null;
 }
 
 export interface RelativeStrengthHorizon {
@@ -265,6 +289,8 @@ export interface ValuationMetrics {
   dividend_yield: number | null;
   fcf_yield: number | null;
   market_cap: number | null;
+  market_cap_cr?: number | null;
+  industry_pe?: number | null;
   enterprise_value: number | null;
   data_age_days: number | null;
   stale: boolean;
@@ -377,6 +403,8 @@ export interface MomentumScanResponse {
   computed_at: string;
   reason: string | null;
   cache_hit: boolean;
+  is_vcp_setup?: boolean | null;
+  vcp_reason?: string | null;
 }
 
 export interface EvidenceItem {
@@ -423,6 +451,8 @@ export interface AnalystRatingResponse {
   data_age_days: number | null;
   reason: string | null;
   cache_hit: boolean;
+  is_vcp_setup?: boolean | null;
+  vcp_reason?: string | null;
 }
 
 // Mirrors apps/api/routes/market.py::ScoreDistributionResponse.
@@ -486,6 +516,12 @@ export interface AltmanZResult {
   description: string;
 }
 
+export interface BeneishMResult {
+  m_score: number | null;
+  zone: string;
+  description: string;
+}
+
 export interface EarningsQualityResult {
   cfo_to_pat: number | null;
   cfo_to_pat_verdict: string;
@@ -524,6 +560,7 @@ export interface FinancialHealthResult {
   fiscal_year_previous: string | null;
   piotroski: PiotroskiResult | null;
   altman_z: AltmanZResult | null;
+  beneish_m?: BeneishMResult | null;
   earnings_quality: EarningsQualityResult | null;
   dupont: DuPontResult | null;
   forensic_shield: ForensicShieldResult | null;
@@ -630,5 +667,136 @@ export interface AiStockContextResponse {
   formatted_context: string;
   ground_truth: any;
 }
+
+export interface ForecastCallItem {
+  symbol: string;
+  company_name: string;
+  pred_return_pct: number;
+  act_return_pct: number;
+  mape_pct: number;
+}
+
+export interface PrecisionTier {
+  tier: string;
+  label: string;
+  count: number;
+  pct: number;
+  win_rate_pct: number;
+}
+
+export interface MlPerformanceResponse {
+  as_of_date: string;
+  horizon_days: number;
+  evaluated_count: number;
+  correct_count: number;
+  incorrect_count: number;
+  directional_win_rate_pct: number;
+  avg_mape_pct: number;
+  median_mape_pct: number;
+  eval_start_date: string | null;
+  eval_end_date: string | null;
+  tiers: PrecisionTier[];
+  top_bullish_calls: ForecastCallItem[];
+  top_bearish_calls: ForecastCallItem[];
+  pinpoint_calls: ForecastCallItem[];
+}
+
+export interface ChecklistCriterion {
+  id: string;
+  title: string;
+  passed: boolean;
+  summary: string;
+  description: string;
+  evidence: string;
+  metrics: Record<string, any>;
+}
+
+export interface StockChecklistResult {
+  instrument_id: string;
+  symbol: string;
+  company_name: string;
+  logo_url?: string | null;
+  sector: string | null;
+  latest_close: number | null;
+  conditions_met: number;
+  total_conditions: number;
+  quality_pct: number;
+  quality_band: string;
+  criteria: ChecklistCriterion[];
+  roce: number | null;
+  roe: number | null;
+  debt_to_equity: number | null;
+  revenue_growth_yoy: number | null;
+  pat_growth_yoy: number | null;
+  analyst_upside_pct: number | null;
+  pe_percentile: number | null;
+  momentum_pass: boolean | null;
+}
+
+export interface ChecklistSummaryResponse {
+  as_of: string;
+  total_evaluated: number;
+  distribution: Record<string, number>;
+  items: StockChecklistResult[];
+}
+
+export interface AiFactorMomentum {
+  value_12_1_pct: number;
+  stage2_passed?: boolean;
+  reasoning: string;
+}
+
+export interface AiFactorValueEp {
+  earnings_yield_pct: number;
+  pe_ratio: number;
+  reasoning: string;
+}
+
+export interface AiFactorQuality {
+  roe_pct: number;
+  roce_pct?: number;
+  debt_to_equity: number;
+  reasoning: string;
+}
+
+export interface AiFactorEarningsRevisions {
+  analyst_upside_pct?: number | null;
+  pat_growth_yoy_pct?: number;
+  rev_growth_yoy_pct?: number;
+  reasoning: string;
+}
+
+export interface AiAlphaPickSignals {
+  momentum: AiFactorMomentum;
+  value_ep: AiFactorValueEp;
+  quality: AiFactorQuality;
+  earnings_revisions: AiFactorEarningsRevisions;
+}
+
+export interface AiAlphaPickItem {
+  rank: number;
+  symbol: string;
+  company_name: string;
+  sector: string;
+  current_price: number;
+  conviction_tier: "EXCEPTIONAL" | "HIGH" | string;
+  composite_alpha_score: number;
+  alpha_thesis: string;
+  signals: AiAlphaPickSignals;
+  catalysts: string[];
+  key_risks: string[];
+  invalidation_level?: number | null;
+}
+
+export interface AiAlphaPicksResponse {
+  generated_date: string;
+  model_name: string;
+  market_regime_context: string;
+  total_candidates_analyzed: number;
+  picks_count: number;
+  picks: AiAlphaPickItem[];
+}
+
+
 
 

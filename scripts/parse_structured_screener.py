@@ -18,6 +18,37 @@ def parse_screener_html(html_content: str) -> dict:
     soup = BeautifulSoup(html_content, "html.parser")
     structured_data = {}
     
+    # Parse top ratios list: Market Cap, Current Price, High / Low, Stock P/E, Book Value, Dividend Yield, ROCE, ROE, Face Value
+    top_ratios_el = soup.find("ul", id="top-ratios")
+    if top_ratios_el:
+        top_ratios = {}
+        for li in top_ratios_el.find_all("li"):
+            name_el = li.find("span", class_="name")
+            val_el = li.find("span", class_="number")
+            if name_el and val_el:
+                name = name_el.get_text(strip=True)
+                val_str = val_el.get_text(strip=True).replace(",", "")
+                try:
+                    num_val = float(val_str)
+                except ValueError:
+                    continue
+                if "Market Cap" in name:
+                    top_ratios["market_cap_cr"] = num_val
+                elif "Stock P/E" in name:
+                    top_ratios["stock_pe"] = num_val
+                elif "Book Value" in name:
+                    top_ratios["book_value"] = num_val
+                elif "Dividend Yield" in name:
+                    top_ratios["dividend_yield_pct"] = num_val
+                elif "ROCE" in name:
+                    top_ratios["roce_pct"] = num_val
+                elif "ROE" in name:
+                    top_ratios["roe_pct"] = num_val
+                elif "Face Value" in name:
+                    top_ratios["face_value"] = num_val
+        if top_ratios:
+            structured_data["top_ratios"] = top_ratios
+
     sections = ["quarters", "profit-loss", "balance-sheet", "cash-flow", "ratios", "shareholding"]
     
     for sec_id in sections:

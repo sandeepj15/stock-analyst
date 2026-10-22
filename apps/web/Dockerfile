@@ -5,11 +5,14 @@ WORKDIR /app
 ENV PORT=3000 \
     HOSTNAME="0.0.0.0"
 
-COPY package*.json ./
-RUN npm install
+# Enable pnpm via corepack for fast, deterministic package management
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "start"]

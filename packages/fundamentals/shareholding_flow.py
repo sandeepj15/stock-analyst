@@ -239,3 +239,91 @@ async def compute_shareholding_flow(
         smart_money_description=desc,
         quarters_history=history[-8:],  # Return up to the latest 8 quarters
     )
+
+
+async def sync_all_institutional_holdings(session: AsyncSession) -> int:
+    """Extract shareholding metrics for all instruments from structured_provider_data
+    and upsert into institutional_holdings table.
+    """
+    from sqlalchemy import func
+    from sqlalchemy.dialects.postgresql import insert
+    from packages.fundamentals.models import InstitutionalHolding
+
+    stmt = (
+        select(StructuredProviderData.instrument_id, StructuredProviderData.data)
+        .distinct(StructuredProviderData.instrument_id)
+        .order_by(StructuredProviderData.instrument_id, StructuredProviderData.parsed_at.desc())
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    records = []
+    for inst_id, data in rows:
+        if not data or "shareholding" not in data:
+            continue
+        sh_data = data["shareholding"]
+        fii_row = sh_data.get("FIIs", {})
+        dii_row = sh_data.get("DIIs", {})
+        prom_row = sh_data.get("Promoters", {})
+        pub_row = sh_data.get("Public", {})
+
+        all_keys: set[str] = set()
+        for r in (fii_row, dii_row, prom_row, pub_row):
+            if isinstance(r, dict):
+                for k in r.keys():
+                    if parse_quarter_key(k) is not None:
+                        all_keys.add(k)
+        sorted_qs = sorted(list(all_keys), key=lambda x: parse_quarter_key(x) or datetime.min)
+        if not sorted_qs:
+            continue
+
+        latest_q = sorted_qs[-1]
+        prev_q = sorted_qs[-2] if len(sorted_qs) >= 2 else None
+
+        fii_cur = parse_num(fii_row.get(latest_q)) if isinstance(fii_row, dict) else None
+        fii_prev = parse_num(fii_row.get(prev_q)) if (prev_q and isinstance(fii_row, dict)) else None
+        fii_qoq = round(fii_cur - fii_prev, 2) if (fii_cur is not None and fii_prev is not None) else None
+
+        dii_cur = parse_num(dii_row.get(latest_q)) if isinstance(dii_row, dict) else None
+        dii_prev = parse_num(dii_row.get(prev_q)) if (prev_q and isinstance(dii_row, dict)) else None
+        dii_qoq = round(dii_cur - dii_prev, 2) if (dii_cur is not None and dii_prev is not None) else None
+
+        prom_cur = parse_num(prom_row.get(latest_q)) if isinstance(prom_row, dict) else None
+        prom_prev = parse_num(prom_row.get(prev_q)) if (prev_q and isinstance(prom_row, dict)) else None
+        prom_qoq = round(prom_cur - prom_prev, 2) if (prom_cur is not None and prom_prev is not None) else None
+
+        pub_cur = parse_num(pub_row.get(latest_q)) if isinstance(pub_row, dict) else None
+
+        records.append({
+            "instrument_id": inst_id,
+            "latest_quarter": latest_q,
+            "fii_current": fii_cur,
+            "fii_qoq_change": fii_qoq,
+            "dii_current": dii_cur,
+            "dii_qoq_change": dii_qoq,
+            "promoter_current": prom_cur,
+            "promoter_qoq_change": prom_qoq,
+            "public_current": pub_cur,
+        })
+
+    if not records:
+        return 0
+
+    insert_stmt = insert(InstitutionalHolding).values(records)
+    upsert_stmt = insert_stmt.on_conflict_do_update(
+        index_elements=[InstitutionalHolding.instrument_id],
+        set_={
+            "latest_quarter": insert_stmt.excluded.latest_quarter,
+            "fii_current": insert_stmt.excluded.fii_current,
+            "fii_qoq_change": insert_stmt.excluded.fii_qoq_change,
+            "dii_current": insert_stmt.excluded.dii_current,
+            "dii_qoq_change": insert_stmt.excluded.dii_qoq_change,
+            "promoter_current": insert_stmt.excluded.promoter_current,
+            "promoter_qoq_change": insert_stmt.excluded.promoter_qoq_change,
+            "public_current": insert_stmt.excluded.public_current,
+            "updated_at": func.now(),
+        }
+    )
+    await session.execute(upsert_stmt)
+    await session.commit()
+    return len(records)

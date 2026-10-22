@@ -541,7 +541,7 @@ def format_chat_history(history: list[dict[str, str]] | None) -> list[types.Cont
 class VertexAiAnalystService:
     def __init__(self) -> None:
         self.settings = get_settings()
-        self.model_name = self.settings.VERTEX_AI_MODEL or "gemini-2.5-flash"
+        self.model_name = self.settings.VERTEX_AI_MODEL or "gemini-3.5-flash"
 
     async def get_status(self) -> dict[str, Any]:
         """Checks connectivity to Vertex AI Gemini in the global location."""

@@ -55,6 +55,7 @@ class Instrument(Base):
     ai_summary: Mapped[str | None] = mapped_column(String, nullable=True)
     key_points: Mapped[str | None] = mapped_column(String, nullable=True)
     website_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -109,3 +110,15 @@ class MLForecast(Base):
     directional_accuracy: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AIAlphaPicksRecord(Base):
+    __tablename__ = "ai_alpha_picks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    generated_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    total_candidates: Mapped[int] = mapped_column(Integer, nullable=False)
+    picks_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)

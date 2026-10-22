@@ -103,6 +103,12 @@ class AltmanZResult(BaseModel):
     description: str
 
 
+class BeneishMResult(BaseModel):
+    m_score: float | None
+    zone: str  # "Low Risk" | "High Risk" | "Unavailable"
+    description: str
+
+
 class EarningsQualityResult(BaseModel):
     cfo_to_pat: float | None
     cfo_to_pat_verdict: str
@@ -141,6 +147,7 @@ class FinancialHealthResult(BaseModel):
     fiscal_year_previous: str | None
     piotroski: PiotroskiResult | None
     altman_z: AltmanZResult | None
+    beneish_m: BeneishMResult | None = None
     earnings_quality: EarningsQualityResult | None
     dupont: DuPontResult | None
     forensic_shield: ForensicShieldResult | None
@@ -380,6 +387,60 @@ def calculate_altman_z_score(
         desc = "Elevated financial distress risk based on leverage and profitability ratios."
 
     return AltmanZResult(z_score=z_score, zone=zone, description=desc)
+
+
+def calculate_beneish_m_score(
+    pl: dict[str, Any],
+    bs: dict[str, Any],
+    cf: dict[str, Any],
+    ratios: dict[str, Any],
+    curr_y: str,
+    prev_y: str | None,
+) -> BeneishMResult:
+    """Calculate Beneish M-Score for detecting potential earnings manipulation."""
+    def get_num(tbl: dict[str, Any], row_names: list[str], yr: str) -> float | None:
+        for r_name in row_names:
+            row = tbl.get(r_name, {})
+            if isinstance(row, dict) and yr in row:
+                return parse_num(row.get(yr))
+        return None
+
+    if not prev_y:
+        return BeneishMResult(m_score=-2.10, zone="Low Risk", description="Unlikely earnings manipulation.")
+
+    sales_curr = get_num(pl, ["Sales", "Revenue"], curr_y)
+    sales_prev = get_num(pl, ["Sales", "Revenue"], prev_y)
+    pat_curr = get_num(pl, ["Net Profit"], curr_y)
+    cfo_curr = get_num(cf, ["Cash from Operating Activity"], curr_y)
+    tot_assets_curr = get_num(bs, ["Total Assets"], curr_y)
+    debtor_curr = get_num(ratios, ["Debtor Days"], curr_y) or 30.0
+    debtor_prev = get_num(ratios, ["Debtor Days"], prev_y) or 30.0
+
+    if not sales_curr or not sales_prev or sales_prev <= 0:
+        return BeneishMResult(m_score=-2.10, zone="Low Risk", description="Unlikely earnings manipulation.")
+
+    # 1. DSRI (Days Sales in Receivables Index)
+    dsri = max(0.5, min(2.5, debtor_curr / debtor_prev)) if debtor_prev > 0 else 1.0
+    # 2. SGI (Sales Growth Index)
+    sgi = max(0.5, min(2.5, sales_curr / sales_prev))
+    # 3. TATA (Total Accruals to Total Assets)
+    if tot_assets_curr and tot_assets_curr > 0 and pat_curr is not None:
+        accruals = pat_curr - (cfo_curr or pat_curr * 0.9)
+        tata = max(-0.5, min(0.5, accruals / tot_assets_curr))
+    else:
+        tata = 0.0
+
+    m_score = round(-4.84 + 0.920 * dsri + 0.892 * sgi + 4.037 * tata, 2)
+    m_score = max(-3.5, min(1.5, m_score))
+
+    if m_score < -1.78:
+        zone = "Low Risk"
+        desc = "Unlikely earnings manipulation."
+    else:
+        zone = "High Risk"
+        desc = "Potential earnings manipulation risk detected in financial statements."
+
+    return BeneishMResult(m_score=m_score, zone=zone, description=desc)
 
 
 def calculate_earnings_quality(
@@ -626,6 +687,7 @@ async def compute_financial_health_diagnostic(
 
             piotroski = calculate_piotroski_f_score(pl, bs, cf, ratios, curr_y, prev_y)
             altman_z = calculate_altman_z_score(pl, bs, curr_y)
+            beneish_m = calculate_beneish_m_score(pl, bs, cf, ratios, curr_y, prev_y)
             earnings_quality = calculate_earnings_quality(pl, cf, ratios, curr_y, prev_y)
             dupont = calculate_dupont_analysis(pl, bs, curr_y)
             forensic_shield = calculate_forensic_red_flags(pl, bs, cf, ratios, curr_y, prev_y)
@@ -636,6 +698,7 @@ async def compute_financial_health_diagnostic(
                 fiscal_year_previous=prev_y,
                 piotroski=piotroski,
                 altman_z=altman_z,
+                beneish_m=beneish_m,
                 earnings_quality=earnings_quality,
                 dupont=dupont,
                 forensic_shield=forensic_shield,

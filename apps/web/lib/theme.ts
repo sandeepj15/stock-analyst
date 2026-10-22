@@ -20,17 +20,15 @@ export function getStoredTheme(): ThemeName | null {
 }
 
 export function getPreferredTheme(): ThemeName {
-  // Dark-first default (SPEC.md UI redesign task: crypto/trading
-  // platforms are overwhelmingly dark-first) - the user's own explicit
-  // choice (persisted via the toggle) always wins; absent that, this
-  // defaults to dark rather than deferring to OS light-mode preference.
+  // Light-first default: the user's explicit choice (persisted via the toggle)
+  // always wins; absent that, this defaults to light mode.
   const stored = getStoredTheme();
-  return stored ?? "dark";
+  return stored ?? "light";
 }
 
 export function getCurrentTheme(): ThemeName {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
 }
 
 export function applyTheme(theme: ThemeName): void {
@@ -52,9 +50,8 @@ export const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
-    // Dark-first default (see getPreferredTheme above) - only an explicit
-    // prior toggle to "light" overrides it, never OS preference.
-    var theme = stored === "light" ? "light" : "dark";
+    // Light-first default: only an explicit prior toggle to "dark" overrides it.
+    var theme = stored === "dark" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {}
 })();

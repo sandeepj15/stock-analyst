@@ -1,199 +1,171 @@
-# SignalForge
+# SignalForge 🚀
 
-SignalForge is an evidence-first market research and decision-support platform
-for retail investors (Indian equities first).
+**Evidence-First Equity Research, Quantitative Screening & Market Intelligence Platform for Indian Equities**
 
-> 🤖 **Working with an AI Coding Agent?** Read [`AGENT_CONTEXT.md`](./AGENT_CONTEXT.md) for the authoritative end-to-end architecture, domain models, scoring formulas, API endpoints, background schedules, and developer rules.
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com/)
+[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![Redis 7](https://img.shields.io/badge/Redis-7-DC382D.svg)](https://redis.io/)
+[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg)](https://tailwindcss.com/)
 
-The full product/engineering specification lives in [`SPEC.md`](./SignalForge_Trading_Research_Engine_SPEC.md).
+![SignalForge Stock Analysis Dashboard](docs/images/dashboard.png)
 
-**This repository currently implements SPEC.md's Phases 0-4 scope:**
+SignalForge is a high-performance, evidence-driven market intelligence platform built specifically for Indian equities (NSE & BSE). It combines automated corporate earnings ingestion, institutional ownership tracking (Smart Money Flow), quantitative multi-factor scoring, technical momentum scans, and machine learning price forecasts into an intuitive research terminal.
 
-- Repository scaffold, FastAPI app, async Postgres/SQLAlchemy, Alembic, Arq
-  worker, Docker Compose, CI, structured logging, health checks.
-- Instrument master + OHLCV daily data model.
-- A provider-agnostic `MarketDataProvider` interface (SPEC.md section 8) with
-  a `yfinance`-backed development provider.
-- A data quality layer (schema/range/duplicate/missing-day/outlier checks).
-- An idempotent ingestion service + Arq job + seed script.
-- Technical indicators, regime detection, momentum scans, and scoring.
-- Next.js frontend with stock charts, screener, and evidence dashboard.
+---
 
-**Not implemented yet** (later phases, see SPEC.md section 101): strategy builder, authentication, AI layer,
-alerts, portfolio. See "Known limitations" below.
+## ✨ Key Features
 
-## Architecture
+### 1. 📊 Quant Screener & Multi-Factor Ranking
+* **1,500+ Active Equities**: Instant client-side search, filtering, and sorting with sub-millisecond responsiveness.
+* **Research Strength Score (0–100)**: Multi-component evidence synthesis combining Technical Structure, Price Momentum, Fundamental Health, Valuation Percentiles, Sector Relative Strength, Market Regime, and Risk Quality.
+* **Smart Money Flow Tracking**: Real-time institutional holding indicators (FII QoQ/YoY shifts, DII flows, Promoter changes, and retail shareholder shakeout detection).
+* **Technical & Momentum Flags**: Real-time TradingView technical momentum signals (`STRONG_BUY`, `BUY`, `NEUTRAL`, `SELL`, `STRONG_SELL`), 52-week high breakout proximity, and Volatility Contraction Pattern (VCP) indicators.
+
+### 2. ⚡ High-Performance Parallel Earnings & Shareholding Sweep
+* **Automated Parallel Ingestion**: Built with an asynchronous 5-worker queue consuming candidate equities with serialized rate-limit pacing (~2.5s per outbound request) to avoid IP blocks.
+* **BSE Feed & Results Detection**: Auto-detects daily corporate earnings declarations from BSE XML feeds and Screener.in latest results feeds.
+* **Bronze / Silver / Gold Storage**: Stores raw scrape HTML (Bronze), structured provider JSON (Silver), and normalized quarterly financial snapshots (Gold) spanning up to 14 quarters.
+
+### 3. 🌐 Market Pulse & Regime Analysis
+* **Market Regime Detection**: Classifies market conditions (e.g. `BEARISH_TREND`, `BULLISH_TREND`) based on Nifty 50 vs. 200 DMA, market breadth (% of stocks above 50/200 DMA), and rolling volatility.
+* **Score Distribution Curve**: Interactive distribution spotlight displaying the entire universe across score bands (Very Weak, Weak, Neutral, Moderate, Strong).
+* **Sector Performance Leaderboards**: Aggregated sector momentum and score rankings across 30+ industry sectors.
+
+### 4. 🤖 AI Alpha Picks & ML Price Trajectory Forecasting
+* **AI Alpha Picks**: LLM-curated conviction stock ideas generated using Google Gemini with structured thesis breakdowns.
+* **ML Price Trajectories**: Deep learning price forecasts across 5-day, 10-day, and 20-day horizons with live directional accuracy (win rate %) and MAPE error tracking tiers.
+
+### 5. 🔍 Stock Research Hub & Deep Diagnostic Cards
+* **14-Quarter Earnings & P&L**: Full historical quarterly financial results with YoY growth calculations and EBITDA margin trajectories.
+* **Ownership Breakdown**: 8-quarter FII, DII, Promoter, and Public shareholding progression charts.
+* **Dynamic Bull & Bear Cases**: Automated evidence-backed bullish and bearish thesis generation for every active company.
+
+---
+
+## 🏛 Architecture
+
+SignalForge is architected as a clean modular monorepo:
 
 ```
-apps/
-  api/        FastAPI app (apps/api/main.py)
-  worker/     Arq background worker (apps/worker/settings.py, jobs.py)
-  web/        Next.js placeholder frontend
-packages/
-  common/     Settings, logging, async DB session (shared by everything)
-  market_data/  Provider protocol + yfinance dev provider + quality + ingestion
-  analytics/, indicators/, scoring/, backtesting/, fundamentals/, news/,
-  portfolio/, alerts/, ai/   Empty placeholders for later build phases
-migrations/   Alembic migrations (async, targets packages.common.models.Base)
-tests/        unit, integration, backtest, data_quality, api
-docs/         architecture, data_dictionary, scoring, runbooks (to fill in later phases)
-scripts/      scripts/seed_dev_data.py
-infra/docker/ reserved for future infra-as-code; Docker Compose + root Dockerfile cover local dev today
+stock-analyst/
+├── apps/
+│   ├── api/            # FastAPI REST and streaming API (port 8000)
+│   ├── web/            # Next.js 14 App Router, Tailwind CSS, TypeScript frontend (port 3000)
+│   └── worker/         # Arq asynchronous background worker
+├── packages/
+│   ├── common/         # Database sessions, models, settings, Redis cache helpers
+│   ├── fundamentals/   # Screener.in scraper, financial parser, shareholding sync
+│   ├── scoring/        # 7-component evidence synthesis engine (Research Score v3)
+│   ├── market_data/    # Daily OHLCV candles, TradingView technical momentum signals
+│   ├── momentum/       # 52-week breakouts & Volatility Contraction Pattern (VCP) scanner
+│   ├── analyst_estimates/ # Target prices, upside percentages, and analyst ratings
+│   ├── ai/             # Vertex AI / Gemini integration, AI Alpha Picks generator
+│   └── kronos/         # Deep learning price trajectory forecast models
+├── migrations/         # Alembic database migrations
+├── scripts/            # CLI utilities (parallel sweeps, backfills, diagnostics)
+└── infra/              # Docker Compose and container configs
 ```
 
-### Model layout decision
+---
 
-- `packages/common/models.py` defines the shared SQLAlchemy `Base` plus the
-  `Instrument` model (instrument master, SPEC.md section 9).
-- `packages/market_data/models.py` defines `OHLCVDaily`, `DataIngestionRun`,
-  and `DataQualityEvent` (SPEC.md sections 10, 11, 45), importing `Base` from
-  `packages.common.models`.
+## 🚀 1-Command Startup (Docker)
 
-This keeps one declarative `Base` (so Alembic autogenerate sees every table)
-while letting each domain package own its own tables going forward.
+### Prerequisites
+* [Docker](https://docs.docker.com/get-docker/) & Docker Compose (v2.20+) installed.
 
-### Provider abstraction
-
-`packages/market_data/base.py` defines the `MarketDataProvider` Protocol and
-the provider-agnostic `InstrumentData` / `DailyBar` / `IntradayBar` / `Quote`
-types. **No code outside `packages/market_data` imports `yfinance` directly.**
-`packages/market_data/providers/yfinance_provider.py` is the only concrete
-implementation right now, and it is explicitly a local-development-only
-provider — see [`DATA_SOURCES.md`](./DATA_SOURCES.md).
-
-## Server & Local Deployment (1-Command Startup)
-
-Prerequisites: Docker + Docker Compose installed.
-
-To run the entire platform (PostgreSQL, Redis, FastAPI API, Arq background worker, and Next.js Web UI) in **1 command**:
+### Launching the Entire Platform
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/sandeepj15/stock-analyst.git
+cd stock-analyst
+
+# 2. Copy the environment template
+cp .env.example .env
+
+# 3. Start all services in 1 command
 ./start.sh
 ```
 
-*(Alternatively: `docker compose up --build -d` or `make up`)*
+*(Alternatively, run `docker compose up --build -d`)*
 
 ### What happens automatically on first boot:
-1. `.env` is initialized from `.env.example` with generated cryptographic secrets if not present.
-2. PostgreSQL (16) and Redis (7) are provisioned with automated health checks.
-3. Database migrations (`alembic upgrade head`) execute automatically before services start.
-4. If running on a brand-new database, the core universe is bootstrapped so the UI is immediately functional.
-5. The Arq background worker starts with automated catch-up scheduling.
-6. The Next.js frontend connects to the backend API container and exposes port 3000.
+1. Provisions **PostgreSQL 16** and **Redis 7** with automated health checks.
+2. Applies database migrations (`alembic upgrade head`).
+3. Seeds initial equity universe and precomputes initial market regime and scoring benchmarks.
+4. Starts the **FastAPI** backend and **Arq** background worker.
+5. Boots the **Next.js 14** web application.
 
-### Accessing Services:
-- **Web UI**: http://localhost:3000 (Stock research dashboard, screener, charting, AI analyst)
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health/db
+### Access URLs:
+* **Web Research Terminal**: [http://localhost:3000](http://localhost:3000)
+* **Interactive API Documentation (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
+* **Backend Health Check**: [http://localhost:8000/health/db](http://localhost:8000/health/db)
 
-### For Local Development with Live Hot-Reloading:
-```bash
-make dev     # or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-```
+---
 
-### Docker layout
+## 🛠 Running the Sweeps & Ingestion Pipelines
 
-A single root `Dockerfile` is shared by the `api` and `worker` services
-(docker-compose.yml overrides the `command` per service) since they share the
-exact same Python dependency set and codebase. `apps/web` has its own
-`Dockerfile` (Node/Next.js).
-
-### Running tests locally
-
-The ORM models use PostgreSQL-specific types (`UUID`, `JSONB`, native
-`ENUM`), and the ingestion service relies on
-`postgresql.insert(...).on_conflict_do_update(...)`, which has no SQLite
-equivalent. Because of that, **every test that touches the database runs
-against a real (disposable) Postgres** — there is no SQLite-based test path
-in this repo.
-
-Fastest local loop (no need to bring up the full compose stack):
+### Screener.in 5-Worker Parallel Sweep
+To scan candidate equities, ingest newly reported Q2 earnings, and update September 2026 shareholding patterns:
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Point at any scratch Postgres - for example, run just the postgres service:
-docker compose up -d postgres
-export TEST_DATABASE_URL="postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge_test"
-export DATABASE_URL="postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge"
-
-pytest -q
+docker compose exec -T api python /app/parallel_screener_sweep.py --workers 5
 ```
 
-`tests/conftest.py` creates/drops all tables directly via
-`Base.metadata.create_all` against `TEST_DATABASE_URL` (bypassing Alembic for
-speed) once per test, inside a fresh engine (engines are intentionally
-function-scoped — see the comment in `conftest.py` about asyncpg + event
-loops). No test hits the real network or a real market-data provider; all
-provider interactions in tests use `tests/fixtures/fake_provider.py`.
+### Daily Market Close Ingestion
+To fetch daily OHLCV prices and compute technical indicators:
 
-### Setting up Continuous Integration (CI)
-
-By default, the automated GitHub Actions CI workflow has been removed to save free tier minutes. If you want GitHub to automatically run your tests, type-checking, and docker builds on every push, create a file at `.github/workflows/ci.yml` in your repository with the following content:
-
-```yaml
-name: CI
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: signalforge
-          POSTGRES_PASSWORD: signalforge
-          POSTGRES_DB: signalforge_test
-        ports: [5432:5432]
-        options: --health-cmd "pg_isready -U signalforge" --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge
-      TEST_DATABASE_URL: postgresql+asyncpg://signalforge:signalforge@localhost:5432/signalforge_test
-      REDIS_URL: redis://localhost:6379/0
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: mypy apps packages
-      - run: pytest -q tests/unit tests/data_quality tests/api
+```bash
+docker compose exec api python scripts/seed_dev_data.py
 ```
 
-## Known limitations / explicit deferrals
+### Recompute Universe Research Scores
+```bash
+docker compose exec api python -c "
+import asyncio
+from packages.common.db import session_scope
+from packages.scoring.engine import recompute_universe_scores
+asyncio.run(recompute_universe_scores())
+"
+```
 
-- **Auth/tenant isolation**: not implemented. All endpoints in this phase
-  expose only public reference data (instruments, OHLCV) — no user-owned
-  data exists yet. SPEC.md section 101 places auth + tenant isolation in the
-  production-hardening phase (section 96).
-- **Market data provider**: `yfinance` is free/no-key but explicitly *not*
-  licensed for commercial redistribution. See `DATA_SOURCES.md`.
-- **Intraday bars / live quotes**: `YFinanceDevProvider.get_intraday_bars`
-  raises `NotImplementedError` by design (yfinance's intraday data is
-  retention-limited and flaky) rather than fabricating data.
-  `get_quotes` is a best-effort approximation using `fast_info`, fine for
-  dev, not a real-time feed.
-- **NSE holiday calendar**: `detect_missing_trading_days` approximates
-  expected trading days as all weekdays. It does not yet exclude exchange
-  holidays — this will over-report missing days around holidays. Tracked as
-  a future improvement, not implemented here.
-- **Next.js frontend**: Implements the Phase 4 scope (stock research, momentum scans, charting). Advanced features like authentication and strategy builders are still pending.
-- **Prometheus/Grafana**: deferred to Phase 11 (SPEC.md section 105.3) — not
-  present in `docker-compose.yml` even though `infra/docker/` exists.
-- **Analytics / scoring / backtesting / strategy builder / alerts /
-  portfolio / AI layer**: not implemented — out of scope per the task brief
-  for this phase (SPEC.md sections 82-83 only).
-- **`instrument_ids` type in the worker job**: SPEC.md's pseudocode for
-  `sync_daily_bars` uses `list[int]`; this implementation uses `list[str]`
-  (UUID strings) because the instrument primary key is a UUID. See the
-  docstring in `apps/worker/jobs.py`.
+---
 
-## Documentation
+## 💻 Local Development Workflow (Without Docker)
 
-- [`DATA_SOURCES.md`](./DATA_SOURCES.md) — exactly which data sources are
-  used, which are free/dev-only, and what's required before commercial
-  launch.
-- `SignalForge_Trading_Research_Engine_SPEC.md` — the authoritative spec.
-  Everything in this repo should trace back to a section of it.
+If developing locally with hot-reloading:
+
+```bash
+# 1. Start database and cache services
+docker compose up -d postgres redis
+
+# 2. Run backend API
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 3. Run frontend
+cd apps/web
+pnpm install
+pnpm dev
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please review our **[CONTRIBUTING.md](./CONTRIBUTING.md)** guide for:
+* Step-by-step development setup and environment configuration.
+* Coding standards (Python Ruff/Mypy & Next.js/TypeScript).
+* Creating database migrations with Alembic.
+* Pull Request submission workflow.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

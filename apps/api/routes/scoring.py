@@ -155,11 +155,20 @@ async def get_evidence(
     """
     instrument = await resolve_instrument_or_404(session, symbol, exchange)
 
+    capped_limit = min(limit, EVIDENCE_LIST_CAP)
+    cache_key = f"stock_evidence:v2:{instrument.id}:{capped_limit}"
+    cached = await cache.get_json(cache_key)
+    if cached is not None:
+        try:
+            return EvidenceListResponse.model_validate(cached)
+        except Exception:
+            pass
+
     stmt = (
         select(EvidenceItem)
         .where(EvidenceItem.instrument_id == instrument.id)
         .order_by(EvidenceItem.created_at.desc())
-        .limit(min(limit, EVIDENCE_LIST_CAP))
+        .limit(capped_limit)
     )
     rows = (await session.execute(stmt)).scalars().all()
 
@@ -183,10 +192,12 @@ async def get_evidence(
         for row in rows
     ]
 
-    return EvidenceListResponse(
+    resp = EvidenceListResponse(
         symbol=instrument.symbol,
         exchange=instrument.exchange,
         count=len(items),
         capped_at=EVIDENCE_LIST_CAP,
         items=items,
     )
+    await cache.set_json(cache_key, resp.model_dump(mode="json"), ttl_seconds=600)
+    return resp

@@ -29,16 +29,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <header className="topnav">
-          <Link href="/" className="brand">
+          <Link href="/" prefetch={true} className="brand">
             SignalForge
           </Link>
           <span className="tagline">Evidence-first research, not predictions.</span>
           <GlobalSearch />
           <div className="nav-right">
-            <Link href="/ai" className="topnav-ai-link">
-              <span className="topnav-ai-icon">⚡</span>
-              <span>Ask AI</span>
-              <span className="topnav-ai-badge">Vertex Gemini</span>
+            <Link href="/ai" prefetch={true} className="topnav-ai-link">
+              <span className="topnav-ai-icon">🎯</span>
+              <span>AI Alpha &amp; Research</span>
+              <span className="topnav-ai-badge">Gemini</span>
             </Link>
             <ThemeToggle />
           </div>

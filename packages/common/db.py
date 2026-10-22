@@ -19,7 +19,14 @@ from packages.common.config import get_settings
 @lru_cache
 def get_engine() -> AsyncEngine:
     settings = get_settings()
-    return create_async_engine(settings.DATABASE_URL, pool_pre_ping=True, future=True)
+    return create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=5,
+        max_overflow=5,
+        pool_recycle=300,
+        pool_pre_ping=True,
+        future=True,
+    )
 
 
 @lru_cache

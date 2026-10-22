@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     # --- Fundamentals provider (future phase, see SPEC section 85) ---
     FUNDAMENTAL_PROVIDER: str | None = Field(default=None)
     FUNDAMENTAL_API_KEY: str | None = Field(default=None)
+    SCREENER_SESSION_ID: str | None = Field(
+        default=None,
+        description="Session cookie for screener.in authenticated requests",
+    )
+    SCREENER_CSRF_TOKEN: str | None = Field(
+        default=None,
+        description="CSRF token cookie for screener.in authenticated requests",
+    )
 
     # --- News provider (future phase) ---
     NEWS_PROVIDER: str | None = Field(default=None)

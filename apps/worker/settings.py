@@ -11,17 +11,18 @@ from arq.connections import RedisSettings
 
 from apps.worker.jobs import (
     check_missed_market_close_sync,
-    generate_ml_forecasts_job,
-    evaluate_ml_forecasts_job,
     compute_all_momentum_scans_job,
     compute_all_scores_job,
+    compute_all_vcp_scans_job,
     daily_market_close_sync,
+    generate_ml_forecasts_job,
     sync_analyst_estimates_job,
     sync_daily_bars,
     sync_fundamentals_job,
     sync_market_regime,
     sync_quarterly_fundamentals_job,
     sync_recent_earnings_job,
+    generate_daily_ai_alpha_picks_job,
 )
 from packages.common.config import get_settings
 from packages.common.logging import configure_logging
@@ -47,6 +48,7 @@ class WorkerSettings:
         sync_market_regime,
         compute_all_scores_job,
         compute_all_momentum_scans_job,
+        compute_all_vcp_scans_job,
         generate_ml_forecasts_job,
         # Also independently/manually callable (e.g. `docker compose exec
         # worker python -c "..."`, same pattern as every job above) in
@@ -54,6 +56,7 @@ class WorkerSettings:
         daily_market_close_sync,
         check_missed_market_close_sync,
         sync_recent_earnings_job,
+        generate_daily_ai_alpha_picks_job,
     ]
     cron_jobs = [
         cron(
@@ -110,8 +113,9 @@ class WorkerSettings:
         cron(
             check_missed_market_close_sync,
             # Heartbeat catch-up: runs on worker startup (e.g. laptop wake)
-            # and every 15 minutes to catch any missed market-close syncs.
-            minute={0, 15, 30, 45},
+            # and every 15 minutes past the hour (at :15, :30, :45) to catch
+            # any missed market-close syncs without colliding with daily_market_close_sync at :00.
+            minute={15, 30, 45},
             run_at_startup=True,
             timeout=3600,
         ),

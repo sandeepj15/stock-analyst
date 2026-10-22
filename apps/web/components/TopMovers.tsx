@@ -23,7 +23,12 @@ function MoversList({ title, rows }: { title: string; rows: InstrumentSummary[] 
       {rows.length === 0 && <p className="footnote">No data.</p>}
       <ul>
         {rows.map((row) => (
-          <li key={row.symbol} className="movers-row" onClick={() => router.push(`/stocks/${row.symbol}`)}>
+          <li
+            key={row.symbol}
+            className="movers-row"
+            onMouseEnter={() => router.prefetch(`/stocks/${row.symbol}`)}
+            onClick={() => router.push(`/stocks/${row.symbol}`)}
+          >
             <span className="movers-symbol">{row.symbol}</span>
             <span className={`num day-change ${row.day_change_pct! >= 0 ? "up" : "down"}`}>
               {row.day_change_pct! >= 0 ? "+" : ""}

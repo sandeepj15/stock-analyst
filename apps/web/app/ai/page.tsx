@@ -1,16 +1,32 @@
 import type { Metadata } from "next";
-import AiAnalystChat from "../../components/AiAnalystChat";
+import { Suspense } from "react";
+import AiPageClient from "../../components/AiPageClient";
 
 export const metadata: Metadata = {
-  title: "AI Analyst · Vertex Gemini | SignalForge",
+  title: "AI Alpha Picks & Analyst · Gemini | SignalForge",
   description:
-    "Institutional quantitative equity research powered by Google Cloud Vertex AI Gemini and live PostgreSQL database.",
+    "Institutional quantitative equity research powered by Google Cloud Vertex AI Gemini and live PostgreSQL multi-factor signals.",
 };
 
 export default function AiPage() {
   return (
-    <div className="ai-page-container">
-      <AiAnalystChat isEmbedded={false} />
-    </div>
+    <Suspense
+      fallback={
+        <div
+          style={{
+            display: "flex",
+            height: "360px",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-muted)",
+            fontSize: "0.9rem",
+          }}
+        >
+          Loading AI Alpha &amp; Research...
+        </div>
+      }
+    >
+      <AiPageClient />
+    </Suspense>
   );
 }

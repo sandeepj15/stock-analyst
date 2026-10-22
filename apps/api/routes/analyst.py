@@ -113,8 +113,16 @@ async def get_analyst_rating(
     source_timestamp = datetime.fromisoformat(payload["source_timestamp"])
     data_age_days = (now.date() - source_timestamp.date()).days
 
-    price_df = await load_ohlcv_dataframe(session, instrument.id)
-    current_price = float(price_df["adjusted_close"].iloc[-1]) if not price_df.empty else None
+    from packages.market_data.models import OHLCVDaily
+
+    stmt_price = (
+        select(OHLCVDaily.adjusted_close)
+        .where(OHLCVDaily.instrument_id == instrument.id)
+        .order_by(OHLCVDaily.trading_date.desc(), OHLCVDaily.ingested_at.desc())
+        .limit(1)
+    )
+    latest_adj = (await session.execute(stmt_price)).scalar_one_or_none()
+    current_price = float(latest_adj) if latest_adj is not None else None
 
     target_mean = payload["target_mean_price"]
     upside_pct: float | None = None
