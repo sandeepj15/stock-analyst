@@ -40,6 +40,10 @@ infra/docker/data/
 # Scratch and DB
 scratch*.py
 *.sqlite3
+db_dumps/*.dump
+dumps/*.dump
+*.dump
+*.sql.gz
 
 # Secrets
 secrets/
