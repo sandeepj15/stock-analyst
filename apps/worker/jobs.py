@@ -829,13 +829,15 @@ async def generate_ml_forecasts_job(ctx: dict[str, Any], instrument_ids: list[st
                 prices_query = select(
                     OHLCVDaily.trading_date.label('timestamps'),
                     OHLCVDaily.open, OHLCVDaily.high, OHLCVDaily.low, OHLCVDaily.close, OHLCVDaily.volume
-                ).where(OHLCVDaily.instrument_id == inst_id).order_by(OHLCVDaily.trading_date.asc()).limit(512)
+                ).where(OHLCVDaily.instrument_id == inst_id).order_by(OHLCVDaily.trading_date.desc()).limit(512)
                 
                 prices_res = await db.execute(prices_query)
                 rows = prices_res.all()
                 if not rows or len(rows) < 50:
                     continue
                     
+                # Reverse to maintain chronological order for Kronos
+                rows = list(reversed(rows))
                 ohlcv_df = pd.DataFrame([dict(r._mapping) for r in rows])
                 
                 # Predict next 5 days
