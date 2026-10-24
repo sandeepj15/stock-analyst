@@ -691,8 +691,8 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   const [maxFundScoreFilter, setMaxFundScoreFilter] = useState<number | "">("");
   const [fundBandFilter, setFundBandFilter] = useState<string | null>(null);
   const [multibaggerFilter, setMultibaggerFilter] = useState<"all" | "yes" | "no">("all");
-  const [stage2Filter, setStage2Filter] = useState<"all" | "pass" | "fail">("pass");
-  const [breakoutFilter, setBreakoutFilter] = useState<"all" | "breakout" | "near_breakout" | "close_breakout">("breakout");
+  const [stage2Filter, setStage2Filter] = useState<"all" | "pass" | "fail">("all");
+  const [breakoutFilter, setBreakoutFilter] = useState<"all" | "breakout" | "near_breakout" | "close_breakout">("all");
   const [vcpFilter, setVcpFilter] = useState<"all" | "yes" | "no">("all");
   const [tvSignalFilter, setTvSignalFilter] = useState<"all" | "strong_buy_both" | "strong_buy_any" | "strong_sell_both" | "strong_sell_any">("all");
   const [maxDistanceFrom52wHigh, setMaxDistanceFrom52wHigh] = useState<number | "">("");
