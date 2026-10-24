@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getStockSummary } from "../lib/stockSummaryCache";
 import {
   ApiError,
@@ -90,11 +91,19 @@ export default function StockPageClient({
   initialPrice,
   initialTechnicals,
 }: StockPageClientProps) {
+  const router = useRouter();
   const isInitialMount = useRef(true);
   const summary = getStockSummary(symbol);
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [range, setRange] = useState<RangeKey>("6M");
+
+  const handleBackToDashboard = (e: React.MouseEvent) => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      e.preventDefault();
+      router.back();
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -118,10 +127,10 @@ export default function StockPageClient({
   }, []);
 
   const [state, setState] = useState<State>(() => {
-    if (initialPrice && initialTechnicals) {
+    if (initialPrice) {
       return {
         price: initialPrice,
-        technicals: initialTechnicals,
+        technicals: initialTechnicals ?? null,
         mlForecast: null,
         loading: false,
         error: null,
@@ -155,9 +164,14 @@ export default function StockPageClient({
   useEffect(() => {
     let cancelled = false;
 
-    // If initialPrice and initialTechnicals were provided for range="6M", skip refetching them on mount
-    if (isInitialMount.current && initialPrice && initialTechnicals && range === "6M") {
+    // If initialPrice was provided for range="6M" on initial mount, skip refetching price
+    if (isInitialMount.current && initialPrice && range === "6M") {
       isInitialMount.current = false;
+      getTechnicals(symbol, range)
+        .then((technicals) => {
+          if (!cancelled) setState((s) => ({ ...s, technicals }));
+        })
+        .catch(() => {});
       getForecast(symbol)
         .then((mlForecast) => {
           if (!cancelled) setState((s) => ({ ...s, mlForecast }));
@@ -172,25 +186,40 @@ export default function StockPageClient({
     }
 
     async function load() {
-      try {
-        const [price, technicals, mlForecast] = await Promise.all([
-          getPrice(symbol, range),
-          getTechnicals(symbol, range),
-          getForecast(symbol).catch(() => null),
-        ]);
+      // 1. Fetch price immediately to unblock header & identity in < 50ms
+      getPrice(symbol, range)
+        .then((price) => {
+          if (!cancelled) {
+            setState((s) => ({ ...s, price, loading: false }));
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          if (err instanceof ApiError && err.status === 404) {
+            setState((s) => ({ ...s, price: null, loading: false, notFound: true, error: err.detail }));
+          } else {
+            const message = err instanceof ApiError ? err.detail : err instanceof Error ? err.message : "Unknown error";
+            setState((s) => ({ ...s, loading: false, error: message }));
+          }
+        });
 
-        if (!cancelled) {
-          setState({ price, technicals, mlForecast, loading: false, error: null, notFound: false });
-        }
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 404) {
-          setState({ price: null, technicals: null, mlForecast: null, loading: false, error: err.detail, notFound: true });
-        } else {
-          const message = err instanceof ApiError ? err.detail : err instanceof Error ? err.message : "Unknown error";
-          setState((s) => ({ ...s, loading: false, error: message }));
-        }
-      }
+      // 2. Fetch technical indicators & candlestick bars in parallel
+      getTechnicals(symbol, range)
+        .then((technicals) => {
+          if (!cancelled) {
+            setState((s) => ({ ...s, technicals }));
+          }
+        })
+        .catch(() => {});
+
+      // 3. Fetch 5D ML forecast in parallel
+      getForecast(symbol)
+        .then((mlForecast) => {
+          if (!cancelled) {
+            setState((s) => ({ ...s, mlForecast }));
+          }
+        })
+        .catch(() => {});
     }
 
     load();
@@ -408,7 +437,12 @@ export default function StockPageClient({
     <div className="stock-page-wrapper">
       {/* BREADCRUMB / BACK NAVIGATION */}
       <div className="stock-nav-breadcrumbs">
-        <Link href="/" prefetch={true} className="breadcrumb-back-btn">
+        <Link
+          href="/"
+          prefetch={true}
+          onClick={handleBackToDashboard}
+          className="breadcrumb-back-btn"
+        >
           <span className="breadcrumb-back-arrow">←</span>
           <span>Dashboard</span>
         </Link>

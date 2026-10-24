@@ -4,7 +4,7 @@ import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "re
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { listInstruments, prefetchStock } from "../lib/api";
-import { saveStockSummary } from "../lib/stockSummaryCache";
+import { saveStockSummary, seedStockSummaries } from "../lib/stockSummaryCache";
 import { bandColor } from "../lib/bands";
 import { sortInstrumentsMulti } from "../lib/sort";
 import type { InstrumentSortKey, InstrumentSummary, SortCriterion, SortOrder } from "../lib/types";
@@ -418,6 +418,10 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [navigatingSymbol, setNavigatingSymbol] = useState<string | null>(null);
   const [copiedSymbol, setCopiedSymbol] = useState<string | null>(null);
+
+  useEffect(() => {
+    seedStockSummaries(initialInstruments);
+  }, [initialInstruments]);
 
   useEffect(() => {
     setNavigatingSymbol(null);

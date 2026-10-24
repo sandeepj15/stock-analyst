@@ -2,6 +2,16 @@ import type { InstrumentSummary } from "./types";
 
 const summaryCache = new Map<string, InstrumentSummary>();
 
+export function seedStockSummaries(summaries: InstrumentSummary[]): void {
+  if (!Array.isArray(summaries)) return;
+  for (let i = 0; i < summaries.length; i++) {
+    const s = summaries[i];
+    if (s?.symbol) {
+      summaryCache.set(s.symbol.toUpperCase(), s);
+    }
+  }
+}
+
 /**
  * Cache an instrument summary in-memory and in sessionStorage so that
  * when the user clicks the stock, its header, identity, current price,

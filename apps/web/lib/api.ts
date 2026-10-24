@@ -53,7 +53,7 @@ export class ApiError extends Error {
   }
 }
 
-const MAX_CLIENT_CACHE_ENTRIES = 60;
+const MAX_CLIENT_CACHE_ENTRIES = 120;
 const clientCache = new Map<string, { data: any; expiry: number }>();
 
 function setClientCache(urlStr: string, data: any, ttlMs: number = 60_000) {
@@ -62,6 +62,26 @@ function setClientCache(urlStr: string, data: any, ttlMs: number = 60_000) {
     if (oldestKey) clientCache.delete(oldestKey);
   }
   clientCache.set(urlStr, { data, expiry: Date.now() + ttlMs });
+}
+
+// Server-side in-memory cache to prevent redundant container-to-container HTTP roundtrips
+// and 1.5MB JSON re-parsing on every page transition / RSC request.
+const serverCache = new Map<string, { data: any; expiry: number }>();
+
+function getServerCache<T>(urlStr: string): T | null {
+  const hit = serverCache.get(urlStr);
+  if (hit && hit.expiry > Date.now()) {
+    return hit.data as T;
+  }
+  return null;
+}
+
+function setServerCache(urlStr: string, data: any, ttlMs: number = 60_000): void {
+  if (serverCache.size >= 200) {
+    const oldest = serverCache.keys().next().value;
+    if (oldest) serverCache.delete(oldest);
+  }
+  serverCache.set(urlStr, { data, expiry: Date.now() + ttlMs });
 }
 
 async function getJson<T>(
@@ -82,11 +102,20 @@ async function getJson<T>(
     if (hit && hit.expiry > Date.now()) {
       return hit.data as T;
     }
+  } else {
+    const hit = getServerCache<T>(urlStr);
+    if (hit) {
+      return hit;
+    }
   }
 
   let res: Response;
+  const nextFetchOptions = typeof window === "undefined"
+    ? ({ next: { revalidate: 60 }, ...fetchOptions } as RequestInit)
+    : fetchOptions;
+
   try {
-    res = await fetch(urlStr, fetchOptions);
+    res = await fetch(urlStr, nextFetchOptions);
   } catch (err) {
     throw new ApiError(0, `Could not reach the API (${(err as Error).message}).`);
   }
@@ -107,6 +136,10 @@ async function getJson<T>(
     // 5-minute client cache for market aggregates, 60-second for stock data
     const ttl = path.includes("/market/") ? 300_000 : 60_000;
     setClientCache(urlStr, data, ttl);
+  } else {
+    // 120-second server cache for full instrument listings, 60-second for individual stocks
+    const ttl = path.includes("/instruments") ? 120_000 : 60_000;
+    setServerCache(urlStr, data, ttl);
   }
   return data;
 }

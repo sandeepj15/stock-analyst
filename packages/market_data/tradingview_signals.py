@@ -211,9 +211,13 @@ async def get_single_tradingview_signal(symbol: str) -> dict[str, Any]:
     if cached_single and isinstance(cached_single, dict):
         return cached_single
 
-    fresh = await fetch_live_tradingview_signals_async([sym_clean])
-    sig = fresh.get(sym_clean, {})
-    if sig:
-        await cache.set_json(single_key, sig, TV_SIGNALS_CACHE_TTL)
-    return sig
+    try:
+        fresh = await asyncio.wait_for(fetch_live_tradingview_signals_async([sym_clean]), timeout=1.5)
+        sig = fresh.get(sym_clean, {})
+        if sig:
+            await cache.set_json(single_key, sig, TV_SIGNALS_CACHE_TTL)
+        return sig
+    except Exception as exc:
+        logger.warning(f"Timeout or failure fetching live TV signal for {sym_clean}: {exc}")
+        return {}
 

@@ -370,7 +370,7 @@ async def get_technicals(
         tv_signal_1w=tv_info.get("tv_signal_1w"),
         tv_momentum_flag=tv_info.get("tv_momentum_flag"),
     )
-    await cache.set_json(cache_key, resp.model_dump(mode="json"), ttl_seconds=300)
+    await cache.set_json(cache_key, resp.model_dump(mode="json"), ttl_seconds=3600)
     return resp
 
 
