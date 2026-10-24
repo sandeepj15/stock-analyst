@@ -10,6 +10,7 @@ import { sortInstrumentsMulti } from "../lib/sort";
 import type { InstrumentSortKey, InstrumentSummary, SortCriterion, SortOrder } from "../lib/types";
 import MarketPulse from "./MarketPulse";
 import MlPerformanceWidget from "./MlPerformanceWidget";
+import MlTacticalPlaybookWidget from "./MlTacticalPlaybookWidget";
 import StockChecklistPanel from "./StockChecklistPanel";
 
 interface Column {
@@ -408,7 +409,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [refreshing, setRefreshing] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  type FilterPreset = "all" | "ml_bullish" | "ml_bearish" | "stage2" | "breakout" | "multibagger" | "multibagger_stage2" | "tv_strong_buy" | "watchlist";
+  type FilterPreset = "all" | "stage2" | "breakout" | "multibagger" | "multibagger_stage2" | "tv_strong_buy" | "watchlist";
   const [filterPreset, setFilterPreset] = useState<FilterPreset>("all");
   type HomeTab = "pulse" | "ml_alpha" | "screener";
   const [homeTab, setHomeTab] = useState<HomeTab>("screener");
@@ -420,6 +421,16 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   useEffect(() => {
     setNavigatingSymbol(null);
   }, [pathname]);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab") || params.get("view");
+      if (tabParam === "ml_alpha" || tabParam === "pulse" || tabParam === "screener") {
+        setHomeTab(tabParam as HomeTab);
+      }
+    } catch {}
+  }, []);
 
   const handleRowClick = (symbol: string, rowData?: InstrumentSummary, e?: React.MouseEvent) => {
     if (e && (e.metaKey || e.ctrlKey || e.button === 1)) {
@@ -537,8 +548,6 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
       : instruments;
 
     let all = 0;
-    let mlBullish = 0;
-    let mlBearish = 0;
     let stage2 = 0;
     let breakout = 0;
     let multibagger = 0;
@@ -547,25 +556,6 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
     let watchlistCount = 0;
     for (const r of list) {
       all++;
-      if (
-        r.ml_forecast_5d_pct !== null &&
-        r.ml_forecast_5d_pct >= 1.5 &&
-        r.score !== null &&
-        r.score >= 60 &&
-        (r.momentum_pass === true || (r.distance_from_52w_high_pct !== null && r.distance_from_52w_high_pct >= -15.5))
-      ) {
-        mlBullish++;
-      }
-      if (
-        r.ml_forecast_5d_pct !== null &&
-        r.ml_forecast_5d_pct <= -2.5 &&
-        r.score !== null &&
-        r.score <= 45 &&
-        r.distance_from_52w_high_pct !== null &&
-        r.distance_from_52w_high_pct <= -20.0
-      ) {
-        mlBearish++;
-      }
       if (r.momentum_pass === true) stage2++;
       if (r.is_52w_breakout === true || (r.distance_from_52w_high_pct !== null && r.distance_from_52w_high_pct > 0)) breakout++;
       if (r.is_multibagger === true) multibagger++;
@@ -573,7 +563,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
       if (r.tv_momentum_flag?.startsWith("STRONG_BUY")) tvStrongBuy++;
       if (watchlistSet.has(r.symbol.toUpperCase())) watchlistCount++;
     }
-    return { all, mlBullish, mlBearish, stage2, breakout, multibagger, mbStage2, tvStrongBuy, watchlist: watchlistCount };
+    return { all, stage2, breakout, multibagger, mbStage2, tvStrongBuy, watchlist: watchlistCount };
   }, [instruments, deferredQuery, watchlistSet]);
 
   function handleSortClick(key: InstrumentSortKey, event: React.MouseEvent) {
@@ -691,8 +681,8 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   const [maxFundScoreFilter, setMaxFundScoreFilter] = useState<number | "">("");
   const [fundBandFilter, setFundBandFilter] = useState<string | null>(null);
   const [multibaggerFilter, setMultibaggerFilter] = useState<"all" | "yes" | "no">("all");
-  const [stage2Filter, setStage2Filter] = useState<"all" | "pass" | "fail">("all");
-  const [breakoutFilter, setBreakoutFilter] = useState<"all" | "breakout" | "near_breakout" | "close_breakout">("all");
+  const [stage2Filter, setStage2Filter] = useState<"all" | "pass" | "fail">("pass");
+  const [breakoutFilter, setBreakoutFilter] = useState<"all" | "breakout" | "near_breakout" | "close_breakout">("breakout");
   const [vcpFilter, setVcpFilter] = useState<"all" | "yes" | "no">("all");
   const [tvSignalFilter, setTvSignalFilter] = useState<"all" | "strong_buy_both" | "strong_buy_any" | "strong_sell_both" | "strong_sell_any">("all");
   const [maxDistanceFrom52wHigh, setMaxDistanceFrom52wHigh] = useState<number | "">("");
@@ -724,26 +714,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
     }
 
     // Filter preset tabs
-    if (filterPreset === "ml_bullish") {
-      filtered = filtered.filter(
-        (row) =>
-          row.ml_forecast_5d_pct !== null &&
-          row.ml_forecast_5d_pct >= 1.5 &&
-          row.score !== null &&
-          row.score >= 60 &&
-          (row.momentum_pass === true || (row.distance_from_52w_high_pct !== null && row.distance_from_52w_high_pct >= -15.5))
-      );
-    } else if (filterPreset === "ml_bearish") {
-      filtered = filtered.filter(
-        (row) =>
-          row.ml_forecast_5d_pct !== null &&
-          row.ml_forecast_5d_pct <= -2.5 &&
-          row.score !== null &&
-          row.score <= 45 &&
-          row.distance_from_52w_high_pct !== null &&
-          row.distance_from_52w_high_pct <= -20.0
-      );
-    } else if (filterPreset === "stage2") {
+    if (filterPreset === "stage2") {
       filtered = filtered.filter((row) => row.momentum_pass === true);
     } else if (filterPreset === "breakout") {
       filtered = filtered.filter((row) => row.is_52w_breakout === true || (row.distance_from_52w_high_pct !== null && row.distance_from_52w_high_pct > 0));
@@ -1072,11 +1043,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
     if (fundBandFilter) {
       list.push({ id: "fundBand", label: `Fund Band: ${fundBandFilter}`, onRemove: () => setFundBandFilter(null) });
     }
-    if (filterPreset === "ml_bullish") {
-      list.push({ id: "mlBullishPreset", label: "🟢 ML Bullish Leaders Tab", onRemove: () => setFilterPreset("all") });
-    } else if (filterPreset === "ml_bearish") {
-      list.push({ id: "mlBearishPreset", label: "🔴 ML Breakdown / Exits Tab", onRemove: () => setFilterPreset("all") });
-    } else if (filterPreset === "stage2") {
+    if (filterPreset === "stage2") {
       list.push({ id: "stage2Preset", label: "⚡ Stage 2 Tab", onRemove: () => setFilterPreset("all") });
     } else if (filterPreset === "breakout") {
       list.push({ id: "breakoutPreset", label: "💥 52W Breakout Tab", onRemove: () => setFilterPreset("all") });
@@ -1271,6 +1238,16 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             <span className="home-tab-label">Quant Screener</span>
             <span className="home-tab-count num">{counts.all}</span>
           </button>
+
+          <Link
+            href="/ai?tab=picks"
+            className="home-tab-pill ai-picks-top-pill"
+            style={{ textDecoration: "none" }}
+            title="View daily AI multi-factor alpha picks (Momentum, Value, Quality, Earnings Revisions)"
+          >
+            <span className="home-tab-icon">🎯</span>
+            <span className="home-tab-label">AI Alpha Picks (Top 10)</span>
+          </Link>
         </div>
       </div>
 
@@ -1287,6 +1264,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
       <div style={{ display: homeTab === "ml_alpha" ? "block" : "none" }}>
         <div className="ml-alpha-tab-pane">
           <MlPerformanceWidget />
+          <MlTacticalPlaybookWidget instruments={initialInstruments} />
         </div>
       </div>
 
@@ -1766,30 +1744,6 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             </button>
             <button
               type="button"
-              className={filterPreset === "ml_bullish" ? "active ml-bullish-tab" : ""}
-              onClick={() => {
-                setFilterPreset("ml_bullish");
-                setStage2Filter("all");
-                setBreakoutFilter("all");
-              }}
-              title="Bullish ML Confluence: Predicted Return ≥ +1.5%, Research Score ≥ 60, and Stage 2 / within 15% of 52W High"
-            >
-              🟢 ML Bullish ({counts.mlBullish})
-            </button>
-            <button
-              type="button"
-              className={filterPreset === "ml_bearish" ? "active ml-bearish-tab" : ""}
-              onClick={() => {
-                setFilterPreset("ml_bearish");
-                setStage2Filter("all");
-                setBreakoutFilter("all");
-              }}
-              title="Bearish Breakdown / Exits: Predicted Return ≤ -2.5%, Research Score ≤ 45, and Drawdown ≤ -20% from 52W High"
-            >
-              🔴 ML Breakdowns ({counts.mlBearish})
-            </button>
-            <button
-              type="button"
               className={filterPreset === "stage2" ? "active" : ""}
               onClick={() => {
                 setFilterPreset("stage2");
@@ -1854,26 +1808,6 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             >
               ⭐ Watchlist ({counts.watchlist})
             </button>
-            <Link
-              href="/ai?tab=picks"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                textDecoration: "none",
-                padding: "4px 10px",
-                borderRadius: "4px",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                background: "rgba(16, 185, 129, 0.12)",
-                color: "#10b981",
-                border: "1px solid rgba(16, 185, 129, 0.3)",
-                marginLeft: "4px",
-              }}
-              title="View daily AI multi-factor alpha picks (Momentum, Value, Quality, Earnings Revisions)"
-            >
-              <span>🎯 AI Alpha Picks (Top 10)</span>
-            </Link>
           </div>
         </div>
 
@@ -1995,22 +1929,6 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
                 <h3>Your Watchlist is Empty</h3>
                 <p>
                   You haven&apos;t added any stocks to your watchlist yet. Click the star <strong>☆</strong> next to any stock symbol or open any stock to add it.
-                </p>
-              </div>
-            ) : filterPreset === "ml_bullish" ? (
-              <div className="watchlist-empty-state">
-                <div className="watchlist-empty-icon">🟢</div>
-                <h3>No ML Bullish Leaders Matching Criteria</h3>
-                <p>
-                  No stocks currently meet all bullish confluence criteria (Predicted 5D Return ≥ +1.5%, Research Score ≥ 60, and Stage 2 / within 15% of 52W High).
-                </p>
-              </div>
-            ) : filterPreset === "ml_bearish" ? (
-              <div className="watchlist-empty-state">
-                <div className="watchlist-empty-icon">🔴</div>
-                <h3>No High-Risk Breakdowns Matching Criteria</h3>
-                <p>
-                  No stocks currently meet severe breakdown criteria (Predicted 5D Return ≤ -2.5%, Research Score ≤ 45, and Drawdown ≤ -20% from 52W High).
                 </p>
               </div>
             ) : (

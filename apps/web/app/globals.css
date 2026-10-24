@@ -288,16 +288,16 @@ tr.row-link:hover {
   color: var(--accent-contrast);
 }
 
-.filter-tabs button.active.ml-bullish-tab {
-  background: #10b981 !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+.home-tab-pill.ai-picks-top-pill {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.28);
 }
 
-.filter-tabs button.active.ml-bearish-tab {
-  background: #ef4444 !important;
-  color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+.home-tab-pill.ai-picks-top-pill:hover {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #059669;
 }
 
 .filter-tabs button:disabled {
