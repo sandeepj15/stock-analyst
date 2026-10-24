@@ -31,35 +31,21 @@ export default function MarketPulse({
   selectedSector,
   onSelectSector,
 }: Props) {
-  const [regime, setRegime] = useState<MarketRegimeResponse | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = sessionStorage.getItem("signalforge_regime_cache");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
-  const [scoreDistribution, setScoreDistribution] = useState<ScoreDistributionResponse | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = sessionStorage.getItem("signalforge_score_dist_cache");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
-  const [sectors, setSectors] = useState<SectorsResponse | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = sessionStorage.getItem("signalforge_sectors_cache");
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
-    return null;
-  });
+  const [regime, setRegime] = useState<MarketRegimeResponse | null>(null);
+  const [scoreDistribution, setScoreDistribution] = useState<ScoreDistributionResponse | null>(null);
+  const [sectors, setSectors] = useState<SectorsResponse | null>(null);
 
   useEffect(() => {
+    // Safely hydrate cached data from sessionStorage on client mount without triggering hydration mismatches
+    try {
+      const savedRegime = sessionStorage.getItem("signalforge_regime_cache");
+      if (savedRegime) setRegime(JSON.parse(savedRegime));
+      const savedDist = sessionStorage.getItem("signalforge_score_dist_cache");
+      if (savedDist) setScoreDistribution(JSON.parse(savedDist));
+      const savedSectors = sessionStorage.getItem("signalforge_sectors_cache");
+      if (savedSectors) setSectors(JSON.parse(savedSectors));
+    } catch {}
+
     getMarketRegime()
       .then((res) => {
         setRegime(res);

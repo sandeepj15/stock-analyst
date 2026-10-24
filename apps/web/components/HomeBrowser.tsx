@@ -11,6 +11,7 @@ import type { InstrumentSortKey, InstrumentSummary, SortCriterion, SortOrder } f
 import MarketPulse from "./MarketPulse";
 import MlPerformanceWidget from "./MlPerformanceWidget";
 import MlTacticalPlaybookWidget from "./MlTacticalPlaybookWidget";
+import AiAlphaPicksTab from "./AiAlphaPicksTab";
 import StockChecklistPanel from "./StockChecklistPanel";
 
 interface Column {
@@ -411,7 +412,7 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
   const tableScrollRef = useRef<HTMLDivElement>(null);
   type FilterPreset = "all" | "stage2" | "breakout" | "multibagger" | "multibagger_stage2" | "tv_strong_buy" | "watchlist";
   const [filterPreset, setFilterPreset] = useState<FilterPreset>("all");
-  type HomeTab = "pulse" | "ml_alpha" | "screener";
+  type HomeTab = "pulse" | "ml_alpha" | "screener" | "ai_picks";
   const [homeTab, setHomeTab] = useState<HomeTab>("screener");
   const [modalSymbol, setModalSymbol] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<string[]>([]);
@@ -428,6 +429,8 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
       const tabParam = params.get("tab") || params.get("view");
       if (tabParam === "ml_alpha" || tabParam === "pulse" || tabParam === "screener") {
         setHomeTab(tabParam as HomeTab);
+      } else if (tabParam === "ai_picks" || tabParam === "picks" || tabParam === "ai") {
+        setHomeTab("ai_picks");
       }
     } catch {}
   }, []);
@@ -1210,7 +1213,10 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             role="tab"
             aria-selected={homeTab === "pulse"}
             className={`home-tab-pill ${homeTab === "pulse" ? "active" : ""}`}
-            onClick={() => setHomeTab("pulse")}
+            onClick={() => {
+              setHomeTab("pulse");
+              try { window.history.replaceState(null, "", "/?tab=pulse"); } catch {}
+            }}
           >
             <span className="home-tab-icon">📊</span>
             <span className="home-tab-label">Market Pulse</span>
@@ -1221,7 +1227,10 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             role="tab"
             aria-selected={homeTab === "ml_alpha"}
             className={`home-tab-pill ${homeTab === "ml_alpha" ? "active" : ""}`}
-            onClick={() => setHomeTab("ml_alpha")}
+            onClick={() => {
+              setHomeTab("ml_alpha");
+              try { window.history.replaceState(null, "", "/?tab=ml_alpha"); } catch {}
+            }}
           >
             <span className="home-tab-icon">🤖</span>
             <span className="home-tab-label">5D ML Forecast Accuracy &amp; Directional Alpha</span>
@@ -1232,22 +1241,30 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
             role="tab"
             aria-selected={homeTab === "screener"}
             className={`home-tab-pill ${homeTab === "screener" ? "active" : ""}`}
-            onClick={() => setHomeTab("screener")}
+            onClick={() => {
+              setHomeTab("screener");
+              try { window.history.replaceState(null, "", "/?tab=screener"); } catch {}
+            }}
           >
             <span className="home-tab-icon">⚡</span>
             <span className="home-tab-label">Quant Screener</span>
             <span className="home-tab-count num">{counts.all}</span>
           </button>
 
-          <Link
-            href="/ai?tab=picks"
-            className="home-tab-pill ai-picks-top-pill"
-            style={{ textDecoration: "none" }}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={homeTab === "ai_picks"}
+            className={`home-tab-pill ai-picks-top-pill ${homeTab === "ai_picks" ? "active" : ""}`}
+            onClick={() => {
+              setHomeTab("ai_picks");
+              try { window.history.replaceState(null, "", "/?tab=ai_picks"); } catch {}
+            }}
             title="View daily AI multi-factor alpha picks (Momentum, Value, Quality, Earnings Revisions)"
           >
             <span className="home-tab-icon">🎯</span>
             <span className="home-tab-label">AI Alpha Picks (Top 10)</span>
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -1265,6 +1282,12 @@ export default function HomeBrowser({ initialInstruments }: { initialInstruments
         <div className="ml-alpha-tab-pane">
           <MlPerformanceWidget />
           <MlTacticalPlaybookWidget instruments={initialInstruments} />
+        </div>
+      </div>
+
+      <div style={{ display: homeTab === "ai_picks" ? "block" : "none" }}>
+        <div style={{ marginTop: "0.5rem" }}>
+          <AiAlphaPicksTab />
         </div>
       </div>
 

@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ["*.ts.net", "*.ngrok-free.dev", "localhost:3000", "127.0.0.1:3000"],
+  allowedDevOrigins: [
+    "signalforge.tail5c3b8b.ts.net",
+    "*.tail5c3b8b.ts.net",
+    "*.ts.net",
+    "*.ngrok-free.dev",
+    "localhost:3000",
+    "127.0.0.1:3000",
+  ],
   async rewrites() {
     return [
       {

@@ -24,30 +24,20 @@ export default function NiftyMiniChart({ regime }: { regime: MarketRegimeRespons
   
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>("3M");
-  const [latestClose, setLatestClose] = useState<number | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = sessionStorage.getItem("signalforge_nifty_price_3M");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.latestClose) return parsed.latestClose;
-        }
-      } catch {}
-    }
-    return regime?.nifty_close ?? null;
-  });
-  const [changePct, setChangePct] = useState<number | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = sessionStorage.getItem("signalforge_nifty_price_3M");
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.changePct !== undefined) return parsed.changePct;
-        }
-      } catch {}
-    }
-    return null;
-  });
+  const [latestClose, setLatestClose] = useState<number | null>(() => regime?.nifty_close ?? null);
+  const [changePct, setChangePct] = useState<number | null>(null);
+
+  // Safely restore cached price & change percentage after client hydration
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`signalforge_nifty_price_${timeRange}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.latestClose) setLatestClose(parsed.latestClose);
+        if (parsed.changePct !== undefined) setChangePct(parsed.changePct);
+      }
+    } catch {}
+  }, [timeRange]);
 
   useEffect(() => {
     if (regime?.nifty_close && latestClose === null) {

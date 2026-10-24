@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import AiAlphaPicksTab from "./AiAlphaPicksTab";
@@ -25,6 +26,46 @@ export default function AiPageClient() {
 
   return (
     <div className="ai-hub-container">
+      {/* Primary Global Navigation Tabs */}
+      <div className="home-tabs-container" style={{ marginBottom: "1rem" }}>
+        <div className="home-tabs-bar" role="tablist" aria-label="SignalForge main views">
+          <Link
+            href="/?tab=pulse"
+            className="home-tab-pill"
+            style={{ textDecoration: "none" }}
+          >
+            <span className="home-tab-icon">📊</span>
+            <span className="home-tab-label">Market Pulse</span>
+          </Link>
+
+          <Link
+            href="/?tab=ml_alpha"
+            className="home-tab-pill"
+            style={{ textDecoration: "none" }}
+          >
+            <span className="home-tab-icon">🤖</span>
+            <span className="home-tab-label">5D ML Forecast Accuracy &amp; Directional Alpha</span>
+          </Link>
+
+          <Link
+            href="/?tab=screener"
+            className="home-tab-pill"
+            style={{ textDecoration: "none" }}
+          >
+            <span className="home-tab-icon">⚡</span>
+            <span className="home-tab-label">Quant Screener</span>
+          </Link>
+
+          <Link
+            href="/ai?tab=picks"
+            className="home-tab-pill active ai-picks-top-pill"
+            style={{ textDecoration: "none" }}
+          >
+            <span className="home-tab-icon">🎯</span>
+            <span className="home-tab-label">AI Alpha Picks (Top 10)</span>
+          </Link>
+        </div>
+      </div>
       {/* Top Tab Bar Navigation */}
       <div className="ai-hub-topbar">
         <div className="ai-hub-header-left">
