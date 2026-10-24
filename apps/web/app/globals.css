@@ -2616,6 +2616,48 @@ tr.row-link:hover {
   background: var(--surface-alt, #1e293b);
 }
 
+/* --- Forward ML Tactical Playbook Table --- */
+
+.ml-tactical-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.ml-tactical-table th {
+  background: var(--surface-alt, #1e293b);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 700;
+  border-bottom: 2px solid var(--panel-border);
+  user-select: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.ml-tactical-table th:hover {
+  color: var(--accent, #3b82f6);
+  background: var(--surface, #0f172a);
+}
+
+.ml-tactical-table th.sorted {
+  color: var(--accent, #3b82f6);
+}
+
+.ml-tactical-table td {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--panel-border);
+  vertical-align: middle;
+}
+
+.ml-tactical-table tr:last-child td {
+  border-bottom: none;
+}
+
 /* --- Market Table Pagination --- */
 
 .market-pagination {
