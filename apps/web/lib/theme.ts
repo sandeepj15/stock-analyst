@@ -1,12 +1,12 @@
 // Theme system shared state. `data-theme` on `<html>` drives every CSS
 // custom property in app/globals.css; this module is the single source
 // of truth for reading/writing it (localStorage-persisted).
-export type ThemeName = "dim" | "dusk" | "dark" | "nord" | "warm" | "cyber" | "light";
+export type ThemeName = "dim" | "glass" | "dusk" | "dark" | "nord" | "warm" | "cyber" | "light";
 
 export const THEME_STORAGE_KEY = "signalforge-theme";
 export const THEME_CHANGE_EVENT = "signalforge-theme-change";
 
-export const VALID_THEMES: ThemeName[] = ["dim", "dusk", "dark", "nord", "warm", "cyber", "light"];
+export const VALID_THEMES: ThemeName[] = ["dim", "glass", "dusk", "dark", "nord", "warm", "cyber", "light"];
 
 export interface ThemeOption {
   id: ThemeName;
@@ -25,6 +25,14 @@ export const THEME_OPTIONS: ThemeOption[] = [
     description: "Comfortable charcoal slate (GitHub Dimmed style)",
     primaryColor: "#58a6ff",
     bgColor: "#22272e",
+  },
+  {
+    id: "glass",
+    name: "Apple Glass",
+    icon: "💎",
+    description: "Frosted translucent glass with ambient mesh glow",
+    primaryColor: "#2997ff",
+    bgColor: "rgba(22, 28, 45, 0.7)",
   },
   {
     id: "dusk",
@@ -114,7 +122,7 @@ export const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
-    var valid = ["dim", "dusk", "dark", "nord", "warm", "cyber", "light"];
+    var valid = ["dim", "glass", "dusk", "dark", "nord", "warm", "cyber", "light"];
     var theme = valid.indexOf(stored) !== -1 ? stored : "dim";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {}
@@ -148,6 +156,19 @@ export const CHART_PALETTES: Record<ThemeName, ChartPalette> = {
     accent: "#58a6ff",
     warn: "#e3b341",
     purple: "#bc8cff",
+  },
+  glass: {
+    background: "#161c2df0",
+    text: "#f5f5f7",
+    grid: "rgba(255, 255, 255, 0.08)",
+    border: "rgba(255, 255, 255, 0.14)",
+    up: "#30d158",
+    down: "#ff453a",
+    upVolume: "rgba(48, 209, 88, 0.35)",
+    downVolume: "rgba(255, 69, 58, 0.35)",
+    accent: "#2997ff",
+    warn: "#ffd60a",
+    purple: "#bf5af2",
   },
   dusk: {
     background: "#232d3f",

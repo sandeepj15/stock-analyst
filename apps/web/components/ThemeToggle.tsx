@@ -79,7 +79,7 @@ export default function ThemeToggle() {
             top: "calc(100% + 6px)",
             right: 0,
             zIndex: 1000,
-            minWidth: "250px",
+            width: "320px",
             background: "var(--panel)",
             border: "1px solid var(--panel-border)",
             borderRadius: "10px",
@@ -129,13 +129,13 @@ export default function ThemeToggle() {
                 }}
                 className="theme-menu-item"
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "1.1rem" }}>{opt.icon}</span>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: "1.1rem", flexShrink: 0 }}>{opt.icon}</span>
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: "0.85rem", fontWeight: 700, color: isSelected ? "var(--accent)" : "inherit" }}>
                       {opt.name}
                     </span>
-                    <span style={{ fontSize: "0.70rem", color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: "0.70rem", color: "var(--text-muted)", lineHeight: 1.3 }}>
                       {opt.description}
                     </span>
                   </div>

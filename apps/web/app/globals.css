@@ -40,6 +40,86 @@ html[data-theme="dim"] {
   --band-very-strong: #56d364;
 }
 
+/* =========================================================================
+   APPLE GLASS THEME (TRANSLUCENT FROSTED GLASS & AMBIENT MESH GLOW)
+   [EASILY REVERSIBLE BLOCK]: All rules are strictly scoped to html[data-theme="glass"].
+   To revert, simply remove this block and the 'glass' entry in lib/theme.ts.
+   ========================================================================= */
+html[data-theme="glass"] {
+  color-scheme: dark;
+
+  /* Apple Glass / macOS Sonoma Frosted Liquid Glass */
+  --bg: #0c101c;
+  --panel: rgba(22, 28, 48, 0.65);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --surface-sunken: rgba(10, 14, 24, 0.65);
+  --surface-alt: rgba(255, 255, 255, 0.08);
+  --surface-raised: rgba(35, 45, 75, 0.75);
+  --text: #f5f5f7;
+  --text-muted: #98989f;
+  --accent: #2997ff;
+  --accent-contrast: #ffffff;
+  --up: #30d158;
+  --down: #ff453a;
+  --flat: #98989f;
+  --warn: #ffd60a;
+  --purple: #bf5af2;
+
+  --notice-bg: rgba(41, 151, 255, 0.12);
+  --notice-border: rgba(41, 151, 255, 0.3);
+  --notice-error-bg: rgba(255, 69, 58, 0.12);
+  --notice-error-border: rgba(255, 69, 58, 0.35);
+  --notice-error-text: #ff6961;
+  --unavailable-stripe: rgba(255, 255, 255, 0.08);
+
+  --band-very-weak: #ff453a;
+  --band-weak: #ff9f0a;
+  --band-neutral: #98989f;
+  --band-moderate: #2997ff;
+  --band-strong: #30d158;
+  --band-very-strong: #32d74b;
+}
+
+/* Ambient fixed mesh glow under Apple Glass */
+html[data-theme="glass"] body {
+  background-color: #0c101c;
+  background-image:
+    radial-gradient(at 15% 15%, rgba(41, 151, 255, 0.18) 0px, transparent 50%),
+    radial-gradient(at 85% 20%, rgba(191, 90, 242, 0.15) 0px, transparent 45%),
+    radial-gradient(at 50% 85%, rgba(48, 209, 88, 0.10) 0px, transparent 50%);
+  background-attachment: fixed;
+  background-size: 100% 100%;
+}
+
+/* Translucent frosted glass effect on panels, headers & floating components */
+html[data-theme="glass"] .panel,
+html[data-theme="glass"] .topnav,
+html[data-theme="glass"] .home-tabs-bar {
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  box-shadow: 0 10px 32px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Apple macOS style dense frosted glass for floating context menu */
+html[data-theme="glass"] .theme-dropdown-menu {
+  background: rgba(24, 32, 52, 0.92) !important;
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.22) !important;
+}
+
+html[data-theme="glass"] input,
+html[data-theme="glass"] select,
+html[data-theme="glass"] .theme-toggle,
+html[data-theme="glass"] .screener-preset-btn {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+/* =========================================================================
+   END APPLE GLASS THEME
+   ========================================================================= */
+
 html[data-theme="dusk"] {
   color-scheme: dark;
 
@@ -298,6 +378,8 @@ a:hover {
   border-bottom: 1px solid var(--panel-border);
   background: var(--panel);
   gap: 1rem;
+  position: relative;
+  z-index: 100;
 }
 
 .topnav .brand {
