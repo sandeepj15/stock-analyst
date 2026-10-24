@@ -1,12 +1,12 @@
 // Theme system shared state. `data-theme` on `<html>` drives every CSS
 // custom property in app/globals.css; this module is the single source
 // of truth for reading/writing it (localStorage-persisted).
-export type ThemeName = "dark" | "light" | "cyber" | "nord" | "warm";
+export type ThemeName = "dim" | "dusk" | "dark" | "nord" | "warm" | "cyber" | "light";
 
 export const THEME_STORAGE_KEY = "signalforge-theme";
 export const THEME_CHANGE_EVENT = "signalforge-theme-change";
 
-export const VALID_THEMES: ThemeName[] = ["dark", "light", "cyber", "nord", "warm"];
+export const VALID_THEMES: ThemeName[] = ["dim", "dusk", "dark", "nord", "warm", "cyber", "light"];
 
 export interface ThemeOption {
   id: ThemeName;
@@ -19,28 +19,28 @@ export interface ThemeOption {
 
 export const THEME_OPTIONS: ThemeOption[] = [
   {
+    id: "dim",
+    name: "Twilight Slate (Semi-Dark)",
+    icon: "🌗",
+    description: "Comfortable charcoal slate (GitHub Dimmed style)",
+    primaryColor: "#58a6ff",
+    bgColor: "#22272e",
+  },
+  {
+    id: "dusk",
+    name: "Cobalt Dusk (Semi-Dark)",
+    icon: "🪐",
+    description: "Muted twilight navy with soft contrast",
+    primaryColor: "#38bdf8",
+    bgColor: "#1a2230",
+  },
+  {
     id: "dark",
-    name: "Midnight Slate",
+    name: "Midnight Slate (Deep Dark)",
     icon: "🌌",
-    description: "Modern institutional dark slate with crisp contrast",
+    description: "Institutional dark slate with crisp contrast",
     primaryColor: "#38bdf8",
     bgColor: "#0b0f17",
-  },
-  {
-    id: "light",
-    name: "Clean Light",
-    icon: "☀️",
-    description: "Crisp daylight pro research mode",
-    primaryColor: "#0284c7",
-    bgColor: "#f8fafc",
-  },
-  {
-    id: "cyber",
-    name: "Cyber Noir (OLED)",
-    icon: "🖤",
-    description: "Deep true black with glowing neon accents",
-    primaryColor: "#00f5a0",
-    bgColor: "#000000",
   },
   {
     id: "nord",
@@ -58,6 +58,22 @@ export const THEME_OPTIONS: ThemeOption[] = [
     primaryColor: "#f59e0b",
     bgColor: "#141210",
   },
+  {
+    id: "cyber",
+    name: "Cyber Noir (OLED)",
+    icon: "🖤",
+    description: "Deep true black with glowing neon accents",
+    primaryColor: "#00f5a0",
+    bgColor: "#000000",
+  },
+  {
+    id: "light",
+    name: "Clean Light",
+    icon: "☀️",
+    description: "Crisp daylight pro research mode",
+    primaryColor: "#0284c7",
+    bgColor: "#f8fafc",
+  },
 ];
 
 export function getStoredTheme(): ThemeName | null {
@@ -72,18 +88,18 @@ export function getStoredTheme(): ThemeName | null {
 
 export function getPreferredTheme(): ThemeName {
   const stored = getStoredTheme();
-  return stored ?? "dark";
+  return stored ?? "dim";
 }
 
 export function getCurrentTheme(): ThemeName {
-  if (typeof document === "undefined") return "dark";
+  if (typeof document === "undefined") return "dim";
   const current = document.documentElement.getAttribute("data-theme") as ThemeName;
-  return VALID_THEMES.includes(current) ? current : "dark";
+  return VALID_THEMES.includes(current) ? current : "dim";
 }
 
 export function applyTheme(theme: ThemeName): void {
   if (typeof document === "undefined") return;
-  const targetTheme = VALID_THEMES.includes(theme) ? theme : "dark";
+  const targetTheme = VALID_THEMES.includes(theme) ? theme : "dim";
   document.documentElement.setAttribute("data-theme", targetTheme);
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, targetTheme);
@@ -98,8 +114,8 @@ export const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
-    var valid = ["dark", "light", "cyber", "nord", "warm"];
-    var theme = valid.indexOf(stored) !== -1 ? stored : "dark";
+    var valid = ["dim", "dusk", "dark", "nord", "warm", "cyber", "light"];
+    var theme = valid.indexOf(stored) !== -1 ? stored : "dim";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {}
 })();
@@ -119,8 +135,33 @@ export interface ChartPalette {
   purple: string;
 }
 
-// Mirrors app/globals.css's `html[data-theme="..."]` blocks
 export const CHART_PALETTES: Record<ThemeName, ChartPalette> = {
+  dim: {
+    background: "#2d333b",
+    text: "#cdd9e5",
+    grid: "#444c5644",
+    border: "#444c56",
+    up: "#3fb950",
+    down: "#f85149",
+    upVolume: "#3fb95055",
+    downVolume: "#f8514955",
+    accent: "#58a6ff",
+    warn: "#e3b341",
+    purple: "#bc8cff",
+  },
+  dusk: {
+    background: "#232d3f",
+    text: "#e2e8f0",
+    grid: "#35425955",
+    border: "#354259",
+    up: "#34d399",
+    down: "#fb7185",
+    upVolume: "#34d39955",
+    downVolume: "#fb718555",
+    accent: "#38bdf8",
+    warn: "#fbbf24",
+    purple: "#c084fc",
+  },
   dark: {
     background: "#0e131f",
     text: "#f1f5f9",
@@ -136,9 +177,9 @@ export const CHART_PALETTES: Record<ThemeName, ChartPalette> = {
   },
   light: {
     background: "#ffffff",
-    text: "#1a2130",
-    grid: "#e8ecf2",
-    border: "#d7dee8",
+    text: "#0f172a",
+    grid: "#e2e8f088",
+    border: "#e2e8f0",
     up: "#166534",
     down: "#b42318",
     upVolume: "#16653455",

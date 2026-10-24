@@ -5,6 +5,76 @@
    palette as a fallback for the rare no-JS case; `html[data-theme=...]`
    is what actually drives the app once JS has run. */
 :root,
+html[data-theme="dim"] {
+  color-scheme: dark;
+
+  /* Twilight Slate: Comfortable semi-dark charcoal slate (GitHub Dimmed style) */
+  --bg: #22272e;
+  --panel: #2d333b;
+  --panel-border: #444c56;
+  --surface-sunken: #1c2128;
+  --surface-alt: #373e47;
+  --surface-raised: #3f4752;
+  --text: #cdd9e5;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --accent-contrast: #1c2128;
+  --up: #3fb950;
+  --down: #f85149;
+  --flat: #8b949e;
+  --warn: #e3b341;
+  --purple: #bc8cff;
+
+  --notice-bg: #283344;
+  --notice-border: #3c5270;
+  --notice-error-bg: #382428;
+  --notice-error-border: #6e333b;
+  --notice-error-text: #ff9da1;
+  --unavailable-stripe: #444c56;
+
+  --band-very-weak: #f85149;
+  --band-weak: #f0883e;
+  --band-neutral: #8b949e;
+  --band-moderate: #58a6ff;
+  --band-strong: #3fb950;
+  --band-very-strong: #56d364;
+}
+
+html[data-theme="dusk"] {
+  color-scheme: dark;
+
+  /* Cobalt Dusk: Soothing semi-dark twilight navy */
+  --bg: #1a2230;
+  --panel: #232d3f;
+  --panel-border: #354259;
+  --surface-sunken: #151b26;
+  --surface-alt: #2d384d;
+  --surface-raised: #37445c;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #38bdf8;
+  --accent-contrast: #0f172a;
+  --up: #34d399;
+  --down: #fb7185;
+  --flat: #94a3b8;
+  --warn: #fbbf24;
+  --purple: #c084fc;
+
+  --notice-bg: #1e293b;
+  --notice-border: #334155;
+  --notice-error-bg: #331920;
+  --notice-error-border: #632332;
+  --notice-error-text: #fda4af;
+  --unavailable-stripe: #354259;
+
+  --band-very-weak: #fb7185;
+  --band-weak: #fb923c;
+  --band-neutral: #94a3b8;
+  --band-moderate: #38bdf8;
+  --band-strong: #34d399;
+  --band-very-strong: #10b981;
+}
+
 html[data-theme="dark"] {
   color-scheme: dark;
 

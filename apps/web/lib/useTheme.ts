@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { THEME_CHANGE_EVENT, applyTheme, getCurrentTheme, VALID_THEMES, type ThemeName } from "./theme";
 
-const SSR_SAFE_DEFAULT: ThemeName = "dark";
+const SSR_SAFE_DEFAULT: ThemeName = "dim";
 
 export function useTheme(): [ThemeName, (theme: ThemeName) => void, () => void] {
   const [theme, setTheme] = useState<ThemeName>(SSR_SAFE_DEFAULT);
