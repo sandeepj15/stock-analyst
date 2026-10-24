@@ -4,66 +4,166 @@
    see that file for the "avoid FOUC" rationale). `:root` holds the dark
    palette as a fallback for the rare no-JS case; `html[data-theme=...]`
    is what actually drives the app once JS has run. */
+:root,
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  /* Binance/exchange-inspired dark palette: deep near-black surfaces
-     (not just "dark gray") with a single warm amber accent used
-     consistently for every interactive element - deliberately not
-     Binance's exact brand yellow (#F0B90B/#FCD535), a muted/more
-     orange amber instead. */
-  --bg: #05070a;
-  --panel: #0c0f14;
-  --panel-border: #1b222c;
-  --surface-sunken: #080a0e;
-  --surface-alt: #141a22;
-  --surface-raised: #11161d;
-  --text: #e8edf4;
-  --text-muted: #7c8a9c;
-  --accent: #f2a93b;
-  --accent-contrast: #0c0f14;
-  --up: #2fbf71;
-  --down: #f0494c;
-  --flat: #7c8a9c;
-  --warn: #f0b429;
-  --purple: #c084fc;
+  /* Midnight Slate: Modern institutional dark with crisp contrast */
+  --bg: #0b0f17;
+  --panel: #111827;
+  --panel-border: #1f293d;
+  --surface-sunken: #070a10;
+  --surface-alt: #162032;
+  --surface-raised: #1e293b;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --accent: #38bdf8;
+  --accent-contrast: #0b0f17;
+  --up: #10b981;
+  --down: #f43f5e;
+  --flat: #94a3b8;
+  --warn: #f59e0b;
+  --purple: #a855f7;
 
-  --notice-bg: #1b2838;
-  --notice-border: #27405a;
-  --notice-error-bg: #2a1618;
-  --notice-error-border: #5a2a2a;
-  --notice-error-text: #ffb4ad;
-  --unavailable-stripe: #2a3545;
+  --notice-bg: #132338;
+  --notice-border: #1d3b60;
+  --notice-error-bg: #2d1419;
+  --notice-error-border: #5c1d29;
+  --notice-error-text: #fda4af;
+  --unavailable-stripe: #1f293d;
 
-  /* Score-band gradient, Very Weak -> Very Strong (SCORING.md section 1,
-     SPEC.md section 19) - color only, the band label text never changes. */
-  --band-very-weak: #f85149;
-  --band-weak: #f0883e;
-  --band-neutral: #8b98a9;
-  --band-moderate: #4da3ff;
-  --band-strong: #3fb950;
-  --band-very-strong: #56d364;
+  --band-very-weak: #f43f5e;
+  --band-weak: #fb923c;
+  --band-neutral: #94a3b8;
+  --band-moderate: #38bdf8;
+  --band-strong: #10b981;
+  --band-very-strong: #34d399;
 }
 
-:root,
+html[data-theme="cyber"] {
+  color-scheme: dark;
+
+  /* Cyber Noir: Pure AMOLED True Black with vibrant neon accents */
+  --bg: #000000;
+  --panel: #09090b;
+  --panel-border: #222227;
+  --surface-sunken: #030303;
+  --surface-alt: #121216;
+  --surface-raised: #18181e;
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --accent: #00f5a0;
+  --accent-contrast: #000000;
+  --up: #00f5a0;
+  --down: #ff3366;
+  --flat: #71717a;
+  --warn: #facc15;
+  --purple: #c084fc;
+
+  --notice-bg: #081d1a;
+  --notice-border: #115e59;
+  --notice-error-bg: #280a11;
+  --notice-error-border: #831843;
+  --notice-error-text: #f472b6;
+  --unavailable-stripe: #27272a;
+
+  --band-very-weak: #ff3366;
+  --band-weak: #fb923c;
+  --band-neutral: #71717a;
+  --band-moderate: #06b6d4;
+  --band-strong: #00f5a0;
+  --band-very-strong: #10b981;
+}
+
+html[data-theme="nord"] {
+  color-scheme: dark;
+
+  /* Nordic Frost: Calm Arctic polar gray-blue palette */
+  --bg: #242933;
+  --panel: #2e3440;
+  --panel-border: #3b4252;
+  --surface-sunken: #1d212a;
+  --surface-alt: #353c4a;
+  --surface-raised: #434c5e;
+  --text: #eceff4;
+  --text-muted: #d8dee9;
+  --accent: #88c0d0;
+  --accent-contrast: #242933;
+  --up: #a3be8c;
+  --down: #bf616a;
+  --flat: #81a1c1;
+  --warn: #ebcb8b;
+  --purple: #b48ead;
+
+  --notice-bg: #2b333f;
+  --notice-border: #4c566a;
+  --notice-error-bg: #3b282c;
+  --notice-error-border: #bf616a;
+  --notice-error-text: #d08770;
+  --unavailable-stripe: #434c5e;
+
+  --band-very-weak: #bf616a;
+  --band-weak: #d08770;
+  --band-neutral: #81a1c1;
+  --band-moderate: #88c0d0;
+  --band-strong: #a3be8c;
+  --band-very-strong: #8fbcbb;
+}
+
+html[data-theme="warm"] {
+  color-scheme: dark;
+
+  /* Warm Graphite: Charcoal & golden amber with low blue-light */
+  --bg: #141210;
+  --panel: #1c1917;
+  --panel-border: #2e2824;
+  --surface-sunken: #0c0b0a;
+  --surface-alt: #26221f;
+  --surface-raised: #322d29;
+  --text: #f5f5f4;
+  --text-muted: #a8a29e;
+  --accent: #f59e0b;
+  --accent-contrast: #1c1917;
+  --up: #22c55e;
+  --down: #ef4444;
+  --flat: #78716c;
+  --warn: #f97316;
+  --purple: #d946ef;
+
+  --notice-bg: #292015;
+  --notice-border: #45321f;
+  --notice-error-bg: #2d1515;
+  --notice-error-border: #571e1e;
+  --notice-error-text: #fca5a5;
+  --unavailable-stripe: #2e2824;
+
+  --band-very-weak: #ef4444;
+  --band-weak: #f97316;
+  --band-neutral: #a8a29e;
+  --band-moderate: #38bdf8;
+  --band-strong: #22c55e;
+  --band-very-strong: #10b981;
+}
+
 html[data-theme="light"] {
   color-scheme: light;
 
-  --bg: #f4f6f9;
+  /* Clean Light: Pro daylight research mode */
+  --bg: #f8fafc;
   --panel: #ffffff;
-  --panel-border: #d7dee8;
-  --surface-sunken: #eef1f6;
-  --surface-alt: #e8ecf2;
-  --surface-raised: #eef2f8;
-  --text: #1a2130;
-  --text-muted: #5b6472;
-  --accent: #b6790a;
+  --panel-border: #e2e8f0;
+  --surface-sunken: #f1f5f9;
+  --surface-alt: #f1f5f9;
+  --surface-raised: #ffffff;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --accent: #0284c7;
   --accent-contrast: #ffffff;
   --up: #166534;
   --down: #b42318;
-  --flat: #5b6472;
-  --warn: #9a6700;
-  --purple: #8250df;
+  --flat: #64748b;
+  --warn: #d97706;
+  --purple: #7c3aed;
 
   --notice-bg: #eaf1fb;
   --notice-border: #bcd4f3;
@@ -74,10 +174,25 @@ html[data-theme="light"] {
 
   --band-very-weak: #cf222e;
   --band-weak: #c2410c;
-  --band-neutral: #5b6472;
-  --band-moderate: #1f6feb;
+  --band-neutral: #64748b;
+  --band-moderate: #0284c7;
   --band-strong: #166534;
   --band-very-strong: #0f7b3a;
+}
+
+.theme-menu-item:hover {
+  background: var(--surface-raised) !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 * {
