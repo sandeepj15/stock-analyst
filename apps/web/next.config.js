@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  compress: true,
   allowedDevOrigins: [
     "signalforge.tail5c3b8b.ts.net",
     "*.tail5c3b8b.ts.net",
