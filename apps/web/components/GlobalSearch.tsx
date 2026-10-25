@@ -63,43 +63,40 @@ export default function GlobalSearch() {
   };
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative", marginLeft: "20px", flex: 1, maxWidth: "400px" }}>
-      <input
-        type="text"
-        placeholder="Search stocks (e.g. RELIANCE, TCS)..."
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setIsOpen(true);
-        }}
-        onKeyDown={handleKeyDown}
-        onFocus={() => setIsOpen(true)}
-        style={{
-          width: "100%",
-          padding: "6px 12px",
-          borderRadius: "4px",
-          border: "1px solid var(--border)",
-          background: "var(--bg-panel)",
-          color: "var(--fg-default)",
-        }}
-      />
-      {isOpen && filtered.length > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: "4px",
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border)",
-            borderRadius: "4px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-            zIndex: 100,
-            maxHeight: "300px",
-            overflowY: "auto"
+    <div ref={wrapperRef} className="global-search-wrapper">
+      <div className="global-search-input-box">
+        <span className="global-search-icon" aria-hidden="true">🔍</span>
+        <input
+          type="text"
+          placeholder="Search 1,510 stocks (e.g. RELIANCE, TCS)..."
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
           }}
-        >
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsOpen(true)}
+          className="global-search-input"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        {query && (
+          <button
+            type="button"
+            className="global-search-clear"
+            onClick={() => {
+              setQuery("");
+              setIsOpen(false);
+            }}
+            aria-label="Clear search"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {isOpen && filtered.length > 0 && (
+        <div className="global-search-dropdown">
           {filtered.map((inst) => (
             <div
               key={inst.symbol}
@@ -109,23 +106,25 @@ export default function GlobalSearch() {
                 saveStockSummary(inst);
                 router.push(`/stocks/${inst.symbol}`);
               }}
-              style={{
-                padding: "8px 12px",
-                cursor: "pointer",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                flexDirection: "column"
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--bg-muted)";
+              className="global-search-item"
+              onMouseEnter={() => {
                 saveStockSummary(inst);
                 router.prefetch(`/stocks/${inst.symbol}`);
                 prefetchStock(inst.symbol);
               }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
-              <span style={{ fontWeight: "bold" }}>{inst.symbol}</span>
-              <span style={{ fontSize: "0.85rem", color: "var(--fg-muted)" }}>{inst.company_name}</span>
+              <div className="global-search-item-main">
+                <span className="global-search-item-sym">{inst.symbol}</span>
+                <span className="global-search-item-name">{inst.company_name}</span>
+              </div>
+              <div className="global-search-item-meta">
+                <span className="global-search-item-sector">{inst.sector || inst.exchange}</span>
+                {inst.score !== undefined && inst.score !== null && (
+                  <span className={`search-badge-score band-${(inst.band || "neutral").toLowerCase()}`}>
+                    {inst.score.toFixed(1)}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>

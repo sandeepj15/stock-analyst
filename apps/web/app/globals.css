@@ -349,16 +349,23 @@ html[data-theme="light"] {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
   background: var(--bg);
   color: var(--text);
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   transition: background-color 0.15s ease, color 0.15s ease;
+  min-width: 320px;
 }
 
 a {
@@ -374,30 +381,189 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.9rem 1.5rem;
+  padding: 0.85rem 1.5rem;
   border-bottom: 1px solid var(--panel-border);
   background: var(--panel);
   gap: 1rem;
   position: relative;
   z-index: 100;
+  width: 100%;
+}
+
+.topnav-main-row {
+  display: contents;
+}
+
+.topnav-brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
 .topnav .brand {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .topnav .tagline {
   color: var(--text-muted);
   font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.topnav-search-row {
   flex: 1;
+  max-width: 440px;
+  display: flex;
 }
 
 .topnav .nav-right {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+/* --- Global Search Bar Component --- */
+.global-search-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.global-search-input-box {
+  display: flex;
+  align-items: center;
+  background: var(--surface-alt);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0 0.65rem;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.global-search-input-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.25);
+  background: var(--panel);
+}
+
+.global-search-icon {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.global-search-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  padding: 0.5rem 0;
+  outline: none;
+  min-width: 0;
+}
+
+.global-search-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.global-search-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.global-search-clear:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.global-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+}
+
+.global-search-item {
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: background 0.12s ease;
+}
+
+.global-search-item:hover {
+  background: var(--surface-alt);
+}
+
+.global-search-item-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.global-search-item-sym {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.global-search-item-name {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.global-search-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.global-search-item-sector {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.search-badge-score {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
 }
 
 .theme-toggle {
@@ -8366,3 +8532,445 @@ tr.row-link:hover {
   font-weight: 700;
   font-size: 0.75rem;
 }
+
+/* =========================================================================
+   COMPREHENSIVE MOBILE & IPHONE 15 RESPONSIVE SYSTEM
+   Strictly targets screens <= 768px with specific iPhone 15 (393px) polish.
+   Eliminates horizontal blowouts, fits viewports, supports iOS safe areas.
+   ========================================================================= */
+
+@media (max-width: 768px) {
+  /* 1. Global Viewport & Container Containment */
+  html, body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  main {
+    padding: 0.65rem max(0.55rem, env(safe-area-inset-right)) 1.5rem max(0.55rem, env(safe-area-inset-left));
+    max-width: 100vw;
+  }
+
+  /* 2. Top Navigation Bar for Mobile */
+  .topnav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+    padding: max(0.65rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) 0.75rem max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .topnav-main-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .topnav-brand-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .topnav .brand {
+    font-size: 1.15rem;
+  }
+
+  .topnav .tagline {
+    display: none !important;
+  }
+
+  .topnav-search-row {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .global-search-wrapper {
+    width: 100%;
+  }
+
+  .global-search-input-box {
+    padding: 0 0.65rem;
+    height: 40px;
+  }
+
+  .global-search-input {
+    font-size: 16px !important; /* Prevents iOS Safari auto-zoom on input focus */
+    padding: 0.5rem 0;
+  }
+
+  .global-search-dropdown {
+    width: 100%;
+    max-height: 280px;
+  }
+
+  .global-search-item {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .global-search-item-name {
+    max-width: 180px;
+  }
+
+  .topnav-ai-text {
+    display: none !important;
+  }
+
+  .topnav-ai-link {
+    padding: 0.35rem 0.55rem;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+  }
+
+  .topnav-ai-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+  }
+
+  .theme-toggle {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .theme-dropdown-menu {
+    width: 280px !important;
+    max-width: calc(100vw - 1.5rem) !important;
+    right: 0 !important;
+    left: auto !important;
+  }
+
+  /* 3. Market Pulse & Dashboard Widgets */
+  .pulse-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.65rem !important;
+  }
+
+  .nifty-mini-card,
+  .score-dist-card,
+  .sector-heatmap-card,
+  .movers-card {
+    grid-column: span 1 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .movers-columns {
+    flex-direction: column !important;
+    gap: 0.85rem !important;
+  }
+
+  .movers-list {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  .score-dist-kpi-strip {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.35rem !important;
+  }
+
+  .score-dist-kpi-card {
+    padding: 0.4rem 0.45rem !important;
+  }
+
+  .score-dist-kpi-val {
+    font-size: 1rem !important;
+  }
+
+  .sector-heatmap-grid {
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)) !important;
+    gap: 0.35rem !important;
+  }
+
+  .sector-cell {
+    padding: 0.45rem 0.5rem !important;
+  }
+
+  .sector-name {
+    font-size: 0.72rem !important;
+  }
+
+  .sector-return {
+    font-size: 0.82rem !important;
+  }
+
+  /* 4. Tab Bars Horizontal Swipe */
+  .home-tabs-container {
+    margin: 0.35rem 0 0.85rem 0 !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    width: 100% !important;
+  }
+
+  .home-tabs-container::-webkit-scrollbar,
+  .home-tabs-bar::-webkit-scrollbar,
+  .filter-tabs::-webkit-scrollbar,
+  .stock-tabs-scroll::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .home-tabs-bar {
+    width: max-content !important;
+    padding: 0.25rem !important;
+    gap: 0.25rem !important;
+  }
+
+  .home-tab-pill {
+    padding: 0.45rem 0.7rem !important;
+    font-size: 0.8rem !important;
+    white-space: nowrap !important;
+  }
+
+  .filter-tabs {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    max-width: 100% !important;
+    display: inline-flex !important;
+    white-space: nowrap !important;
+  }
+
+  .filter-tabs button {
+    padding: 0.3rem 0.6rem !important;
+    font-size: 0.74rem !important;
+  }
+
+  /* 5. Market Table Mobile Fit */
+  .market-table-panel {
+    padding: 0.5rem 0.35rem !important;
+    border-radius: 8px !important;
+  }
+
+  .market-table-scroll {
+    max-height: 68vh !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .market-table td,
+  .market-table th {
+    padding: 0.4rem 0.45rem !important;
+    font-size: 0.78rem !important;
+  }
+
+  .market-table th.sticky-col-1,
+  .market-table td.sticky-col-1 {
+    width: 34px !important;
+    min-width: 34px !important;
+    padding: 0.4rem 0.25rem !important;
+    text-align: center;
+  }
+
+  .market-table th.sticky-col-2,
+  .market-table td.sticky-col-2 {
+    left: 34px !important;
+    max-width: 130px !important;
+  }
+
+  .instrument-cell .instrument-symbol {
+    font-size: 0.82rem !important;
+  }
+
+  .instrument-cell .instrument-name {
+    max-width: 110px !important;
+    font-size: 0.68rem !important;
+  }
+
+  /* 6. Stock Dossier (/stocks/[symbol]) */
+  .stock-identity-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.75rem !important;
+    padding: 0.75rem 0.85rem !important;
+  }
+
+  .stock-identity-left {
+    align-items: center !important;
+    gap: 0.65rem !important;
+  }
+
+  .stock-logo-circle {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .stock-company-name {
+    font-size: 1.15rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .stock-symbol-badge {
+    font-size: 0.75rem !important;
+  }
+
+  .stock-identity-right {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding-top: 0.5rem !important;
+    border-top: 1px solid var(--surface-alt) !important;
+  }
+
+  .stock-current-price {
+    font-size: 1.35rem !important;
+  }
+
+  .stock-change-badge {
+    font-size: 0.8rem !important;
+    padding: 0.2rem 0.5rem !important;
+  }
+
+  .stock-actions-group {
+    display: flex !important;
+    gap: 0.4rem !important;
+  }
+
+  .btn-watchlist,
+  .btn-share-icon {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.76rem !important;
+  }
+
+  .stock-hero-tiles-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.45rem !important;
+    margin: 0.5rem 0 0.75rem 0 !important;
+  }
+
+  .stock-hero-tile {
+    padding: 0.55rem 0.65rem !important;
+  }
+
+  .hero-tile-label {
+    font-size: 0.68rem !important;
+  }
+
+  .hero-tile-value {
+    font-size: 1.15rem !important;
+  }
+
+  .overview-two-column-layout {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .chart-container-panel {
+    padding: 0.65rem 0.75rem !important;
+  }
+
+  .chart-frame {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 8px !important;
+  }
+
+  .key-level-boxes-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.3rem !important;
+  }
+
+  .level-box {
+    padding: 0.35rem 0.25rem !important;
+    text-align: center !important;
+  }
+
+  .level-box-title {
+    font-size: 0.58rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .level-box-val {
+    font-size: 0.75rem !important;
+  }
+
+  .drivers-split-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .driver-item {
+    padding: 0.45rem 0.6rem !important;
+    font-size: 0.76rem !important;
+  }
+
+  /* 7. ML & Tactical Playbook */
+  .ml-perf-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+  }
+
+  .ml-perf-tier-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.35rem !important;
+  }
+
+  .ml-perf-kpi-card,
+  .ml-perf-tier-card {
+    padding: 0.45rem 0.55rem !important;
+  }
+
+  .ml-perf-kpi-val {
+    font-size: 1.15rem !important;
+  }
+
+  /* 8. AI Alpha Hub (/ai) */
+  .ai-hub-topbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  .ai-hub-main-title {
+    font-size: 1.25rem !important;
+  }
+
+  .ai-nav-tabs-wrapper {
+    width: 100% !important;
+    display: flex !important;
+  }
+
+  .ai-nav-tab-btn {
+    flex: 1 !important;
+    justify-content: center !important;
+    font-size: 0.8rem !important;
+    padding: 0.45rem 0.5rem !important;
+  }
+
+  .ai-alpha-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .ai-analyst-container {
+    height: calc(100vh - 180px) !important;
+    border-radius: 8px !important;
+  }
+
+  .ai-ticker-pills,
+  .ai-chips-list {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    white-space: nowrap !important;
+    padding-bottom: 0.25rem !important;
+  }
+
+  .ai-ticker-pill,
+  .ai-prompt-chip {
+    flex-shrink: 0 !important;
+    font-size: 0.78rem !important;
+  }
+
+  .ai-input-footer {
+    padding: 0.5rem 0.65rem max(0.65rem, env(safe-area-inset-bottom)) 0.65rem !important;
+  }
+
+  .ai-chat-textarea {
+    font-size: 16px !important; /* Prevents iOS Safari auto-zoom on input focus */
+  }
+}
+

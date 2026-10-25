@@ -105,19 +105,21 @@ export default function StockCharts({ bars, series, mlForecast }: Props) {
       crosshair: { mode: CrosshairMode.Normal },
     });
 
+    const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+
     const candleChart = createChart(candleEl, {
       width: candleEl.clientWidth,
-      height: 380,
+      height: isMobile ? 270 : 380,
       ...sharedOptions(false),
     });
     const rsiChart = createChart(rsiEl, {
       width: rsiEl.clientWidth,
-      height: 160,
+      height: isMobile ? 120 : 160,
       ...sharedOptions(false),
     });
     const macdChart = createChart(macdEl, {
       width: macdEl.clientWidth,
-      height: 160,
+      height: isMobile ? 120 : 160,
       ...sharedOptions(true), // bottom-most pane: the only one with visible time-axis labels
     });
 
@@ -273,9 +275,11 @@ export default function StockCharts({ bars, series, mlForecast }: Props) {
     candleChart.timeScale().fitContent();
 
     const resizeObserver = new ResizeObserver(() => {
-      candleChart.applyOptions({ width: candleEl.clientWidth });
-      rsiChart.applyOptions({ width: rsiEl.clientWidth });
-      macdChart.applyOptions({ width: macdEl.clientWidth });
+      const isMob = typeof window !== "undefined" && window.innerWidth <= 768;
+      const w = candleEl.clientWidth;
+      candleChart.applyOptions({ width: w, height: isMob ? 270 : 380 });
+      rsiChart.applyOptions({ width: rsiEl.clientWidth, height: isMob ? 120 : 160 });
+      macdChart.applyOptions({ width: macdEl.clientWidth, height: isMob ? 120 : 160 });
     });
     resizeObserver.observe(candleEl);
 

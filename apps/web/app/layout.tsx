@@ -1,12 +1,24 @@
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import ThemeToggle from "../components/ThemeToggle";
 import GlobalSearch from "../components/GlobalSearch";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "SignalForge",
   description: "Evidence-first market research and decision-support platform.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#161b22" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -29,18 +41,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <header className="topnav">
-          <Link href="/" prefetch={true} className="brand">
-            SignalForge
-          </Link>
-          <span className="tagline">Evidence-first research, not predictions.</span>
-          <GlobalSearch />
-          <div className="nav-right">
-            <Link href="/ai" prefetch={true} className="topnav-ai-link">
-              <span className="topnav-ai-icon">🎯</span>
-              <span>AI Alpha &amp; Research</span>
-              <span className="topnav-ai-badge">Gemini</span>
-            </Link>
-            <ThemeToggle />
+          <div className="topnav-main-row">
+            <div className="topnav-brand-wrap">
+              <Link href="/" prefetch={true} className="brand">
+                SignalForge
+              </Link>
+              <span className="tagline">Evidence-first research, not predictions.</span>
+            </div>
+            <div className="nav-right">
+              <Link href="/ai" prefetch={true} className="topnav-ai-link" title="AI Alpha & Research">
+                <span className="topnav-ai-icon">🎯</span>
+                <span className="topnav-ai-text">AI Alpha</span>
+                <span className="topnav-ai-badge">Gemini</span>
+              </Link>
+              <ThemeToggle />
+            </div>
+          </div>
+          <div className="topnav-search-row">
+            <GlobalSearch />
           </div>
         </header>
         <main>{children}</main>
