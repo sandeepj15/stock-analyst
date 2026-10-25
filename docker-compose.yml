@@ -105,12 +105,11 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["npm", "run", "dev"]
+    command: ["sh", "-c", "npm run build && npm run start"]
     environment:
       API_URL: http://api:8000
       PORT: 3000
       HOSTNAME: "0.0.0.0"
-      WATCHPACK_POLLING: "true"
     volumes:
       - ./apps/web:/app
       - /app/node_modules
