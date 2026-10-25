@@ -2,6 +2,13 @@ services:
   postgres:
     image: postgres:16
     restart: unless-stopped
+    command: >
+      postgres
+        -c shared_buffers=512MB
+        -c effective_cache_size=1536MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=64MB
+        -c random_page_cost=1.1
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-signalforge}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signalforge}

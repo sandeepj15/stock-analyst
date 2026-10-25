@@ -40,9 +40,9 @@ SortKey = Literal[
 ]
 SortOrder = Literal["asc", "desc"]
 
-# Cache for 30 minutes in Redis so navigation and universe browsing
+# Cache for 12 hours in Redis so navigation and universe browsing
 # respond in < 1ms without expensive uncached DB joins on every request.
-LISTING_CACHE_TTL_SECONDS = 1800
+LISTING_CACHE_TTL_SECONDS = 43200
 
 
 async def get_multibagger_symbol_set(session: AsyncSession) -> set[str]:
@@ -53,7 +53,7 @@ async def get_multibagger_symbol_set(session: AsyncSession) -> set[str]:
     from packages.fundamentals.checklist import get_all_checklist_results
     res = await get_all_checklist_results(session, min_score=6)
     symbols = [item.symbol for item in res.items if item.conditions_met == 6]
-    await cache.set_json(cache_key, symbols, 3600)
+    await cache.set_json(cache_key, symbols, 86400)
     return set(symbols)
 
 
@@ -102,7 +102,7 @@ async def get_52w_breakout_map(session: AsyncSession) -> dict[str, float]:
     """)
     result = await session.execute(stmt)
     breakout_map = {row[0].upper(): float(row[1]) for row in result.all()}
-    await cache.set_json(cache_key, breakout_map, 3600)
+    await cache.set_json(cache_key, breakout_map, 86400)
     return breakout_map
 
 

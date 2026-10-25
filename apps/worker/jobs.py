@@ -887,6 +887,65 @@ async def generate_ml_forecasts_job(ctx: dict[str, Any], instrument_ids: list[st
         "failure_count": failure_count
     }
 
+
+async def precompute_universe_cache_job(ctx: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Precompute and warm Redis cache for:
+    1. 52W breakout map
+    2. Multibagger checklist symbols
+    3. Full instruments universe listing (NSE, active_only=True)
+    4. Market regime, sectors summary, and score distribution
+
+    Eliminates cold-cache latency spikes and ensures user queries respond in < 20ms.
+    """
+    logger.info("precompute_universe_cache_job: warming universe cache")
+    t0 = time.monotonic()
+    from apps.api.routes.instruments import get_52w_breakout_map, get_multibagger_symbol_set, list_instruments
+    from apps.api.routes.market import get_sector_summary, get_score_distribution, get_market_regime
+
+    results: dict[str, Any] = {}
+    async with session_scope() as session:
+        # 1. 52W breakout map (accelerated by idx_ohlcv_inst_date_high_close covering index)
+        b_start = time.monotonic()
+        breakout_map = await get_52w_breakout_map(session)
+        results["breakout_count"] = len(breakout_map)
+        results["breakout_seconds"] = round(time.monotonic() - b_start, 2)
+
+        # 2. Multibagger checklist symbols
+        mb_start = time.monotonic()
+        multibaggers = await get_multibagger_symbol_set(session)
+        results["multibaggers_count"] = len(multibaggers)
+        results["multibaggers_seconds"] = round(time.monotonic() - mb_start, 2)
+
+        # 3. Market aggregates
+        mkt_start = time.monotonic()
+        await get_market_regime(session=session)
+        await get_sector_summary(exchange="NSE", session=session)
+        await get_score_distribution(exchange="NSE", session=session)
+        results["market_aggregates_seconds"] = round(time.monotonic() - mkt_start, 2)
+
+        # 4. Default universe listing (NSE, active_only=True)
+        univ_start = time.monotonic()
+        listing = await list_instruments(
+            exchange="NSE",
+            active_only=True,
+            sort="symbol",
+            order="asc",
+            momentum_pass=None,
+            sector=None,
+            min_score=None,
+            max_score=None,
+            breakout_only=None,
+            session=session,
+        )
+        results["universe_count"] = len(listing) if isinstance(listing, list) else "cached"
+        results["universe_seconds"] = round(time.monotonic() - univ_start, 2)
+
+    total_duration = round(time.monotonic() - t0, 2)
+    results["duration_seconds"] = total_duration
+    logger.info("precompute_universe_cache_job: completed universe cache warm-up", extra=results)
+    return results
+
+
 async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
     """Daily, automatic, Mon-Fri-only, after-market-close refresh pipeline.
 
@@ -1007,6 +1066,9 @@ async def daily_market_close_sync(ctx: dict[str, Any]) -> dict[str, Any]:
             "duration_seconds": round(time.monotonic() - cache_step_started, 2),
             "error": str(exc),
         }
+
+    # Proactively warm the cache immediately after invalidation so zero user requests suffer a cold-cache penalty
+    await _run_step("precompute_universe_cache", precompute_universe_cache_job(ctx))
 
     finished_at = datetime.now(UTC)
     summary = {

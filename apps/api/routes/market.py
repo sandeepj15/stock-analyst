@@ -47,8 +47,8 @@ router = APIRouter(prefix="/api/v1/market", tags=["market"])
 # hand-reordered copy.
 BAND_ORDER: list[str] = [label for _, label in SCORE_BAND_THRESHOLDS] + [VERY_STRONG_LABEL]
 
-# 1-hour Redis TTL for market aggregates. Invalidated by daily batch jobs.
-MARKET_AGGREGATE_CACHE_TTL_SECONDS = 3600
+# 12-hour Redis TTL for market aggregates. Invalidated by daily batch jobs.
+MARKET_AGGREGATE_CACHE_TTL_SECONDS = 43200
 
 # Fast in-process L1 cache for sub-millisecond market responses
 _SECTORS_L1_CACHE: dict[str, tuple[float, SectorsResponse]] = {}
@@ -218,14 +218,15 @@ class SectorsResponse(BaseModel):
 
 @router.get("/sectors", response_model=SectorsResponse)
 async def get_sector_summary(
-    response: Response,
+    response: Response = None,
     exchange: str = Query(default="NSE"),
     session: AsyncSession = Depends(get_db_session),
 ) -> SectorsResponse:
     """Per-sector aggregate: avg Research Score, avg day-over-day % price
     change, instrument count, and count passing Stage 2 Momentum.
     """
-    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
+    if response:
+        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
 
     now = time.monotonic()
     exchange_upper = exchange.upper()

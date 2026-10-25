@@ -23,6 +23,7 @@ from apps.worker.jobs import (
     sync_quarterly_fundamentals_job,
     sync_recent_earnings_job,
     generate_daily_ai_alpha_picks_job,
+    precompute_universe_cache_job,
 )
 from packages.common.config import get_settings
 from packages.common.logging import configure_logging
@@ -57,6 +58,7 @@ class WorkerSettings:
         check_missed_market_close_sync,
         sync_recent_earnings_job,
         generate_daily_ai_alpha_picks_job,
+        precompute_universe_cache_job,
     ]
     cron_jobs = [
         cron(
