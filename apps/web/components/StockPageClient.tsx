@@ -167,11 +167,13 @@ export default function StockPageClient({
     // If initialPrice was provided for range="6M" on initial mount, skip refetching price
     if (isInitialMount.current && initialPrice && range === "6M") {
       isInitialMount.current = false;
-      getTechnicals(symbol, range)
-        .then((technicals) => {
-          if (!cancelled) setState((s) => ({ ...s, technicals }));
-        })
-        .catch(() => {});
+      if (!initialTechnicals) {
+        getTechnicals(symbol, range)
+          .then((technicals) => {
+            if (!cancelled) setState((s) => ({ ...s, technicals }));
+          })
+          .catch(() => {});
+      }
       getForecast(symbol)
         .then((mlForecast) => {
           if (!cancelled) setState((s) => ({ ...s, mlForecast }));
